@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard — Smart Loom</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+
+<body>
+
+  <nav class="sl-navbar navbar navbar-expand-lg">
+    <div class="container">
+      <a class="navbar-brand" href="/index.html"><span class="sl-logo">SL</span><span>Smart Loom<span
+            class="sl-brand-sub">Supply Chain</span></span></a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#nav"><span
+          class="navbar-toggler-icon"></span></button>
+      <div class="collapse navbar-collapse" id="nav">
+        <ul class="navbar-nav mx-auto">
+          <li class="nav-item"><a class="nav-link sl-nav-link" href="/index.html">Home</a></li>
+          <li class="nav-item"><a class="nav-link sl-nav-link" href="/dashboard.html">Dashboard</a></li>
+          <li class="nav-item"><a class="nav-link sl-nav-link" href="/products.html">Products</a></li>
+          <li class="nav-item"><a class="nav-link sl-nav-link" href="/orders.html">Orders</a></li>
+        </ul>
+        <div class="d-flex gap-2">
+          <a href="/login.html" class="btn btn-outline-sl">Login</a>
+          <a href="/login.html" class="btn btn-accent-sl">Get Started</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <header class="sl-page-header">
+    <div class="container">
+      <h1>Dashboard</h1>
+      <p>Overview of your textile supply chain operations.</p>
+    </div>
+  </header>
+
+  <section class="container py-5">
+
+    <!-- STATS -->
+    <div class="row g-3">
+      <div class="col-6 col-md-3">
+        <div class="sl-card p-4 h-100">
+          <div class="d-flex justify-content-between align-items-start mb-3"><span class="text-muted-sl text-uppercase"
+              style="font-size:.7rem;letter-spacing:.1em;">Products</span><i
+              class="bi bi-box-seam sl-icon-accent fs-5"></i></div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.8rem;font-weight:600;">248</div>
+          <div class="sl-badge sl-badge-success mt-2">+12 this week</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="sl-card p-4 h-100">
+          <div class="d-flex justify-content-between align-items-start mb-3"><span class="text-muted-sl text-uppercase"
+              style="font-size:.7rem;letter-spacing:.1em;">Orders</span><i class="bi bi-truck sl-icon-accent fs-5"></i>
+          </div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.8rem;font-weight:600;">342</div>
+          <div class="sl-badge sl-badge-success mt-2">+8% MoM</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="sl-card p-4 h-100">
+          <div class="d-flex justify-content-between align-items-start mb-3"><span class="text-muted-sl text-uppercase"
+              style="font-size:.7rem;letter-spacing:.1em;">Suppliers</span><i
+              class="bi bi-people sl-icon-accent fs-5"></i></div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.8rem;font-weight:600;">86</div>
+          <div class="sl-badge sl-badge-muted mt-2">Active</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="sl-card p-4 h-100">
+          <div class="d-flex justify-content-between align-items-start mb-3"><span class="text-muted-sl text-uppercase"
+              style="font-size:.7rem;letter-spacing:.1em;">Revenue</span><i
+              class="bi bi-bar-chart sl-icon-accent fs-5"></i></div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.8rem;font-weight:600;">₹8.2L</div>
+          <div class="sl-badge sl-badge-warning mt-2">This month</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-4 mt-2">
+      <!-- RECENT ORDERS -->
+      <div class="col-lg-8">
+        <div class="sl-card">
+          <div class="d-flex justify-content-between align-items-center p-4 pb-3">
+            <h5 class="mb-0">Recent Orders</h5>
+            <a href="/orders.html" class="text-decoration-none small">View all <i class="bi bi-arrow-right"></i></a>
+          </div>
+          <div class="table-responsive">
+            <table class="sl-table">
+              <thead>
+                <tr>
+                  <th>Order ID</th>
+                  <th>Buyer</th>
+                  <th>Product</th>
+                  <th>Status</th>
+                  <th class="text-end">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>#ORD-1042</td>
+                  <td>Riya Mehta</td>
+                  <td>Banarasi Silk Saree</td>
+                  <td><span class="sl-badge sl-badge-success">Delivered</span></td>
+                  <td class="text-end">₹14,500</td>
+                </tr>
+                <tr>
+                  <td>#ORD-1041</td>
+                  <td>Kabir Sethi</td>
+                  <td>Khadi Cotton Bale</td>
+                  <td><span class="sl-badge sl-badge-warning">In Transit</span></td>
+                  <td class="text-end">₹8,200</td>
+                </tr>
+                <tr>
+                  <td>#ORD-1040</td>
+                  <td>Anika Verma</td>
+                  <td>Pashmina Shawl</td>
+                  <td><span class="sl-badge sl-badge-accent">Processing</span></td>
+                  <td class="text-end">₹22,000</td>
+                </tr>
+                <tr>
+                  <td>#ORD-1039</td>
+                  <td>Vikram Joshi</td>
+                  <td>Chanderi Dupatta Set</td>
+                  <td><span class="sl-badge sl-badge-success">Delivered</span></td>
+                  <td class="text-end">₹6,750</td>
+                </tr>
+                <tr>
+                  <td>#ORD-1038</td>
+                  <td>Saanvi Iyer</td>
+                  <td>Tussar Silk Yardage</td>
+                  <td><span class="sl-badge sl-badge-danger">Cancelled</span></td>
+                  <td class="text-end">₹3,400</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- INVENTORY -->
+      <div class="col-lg-4">
+        <div class="sl-card p-4 h-100">
+          <h5 class="mb-3">Inventory Status</h5>
+          <div class="mb-3">
+            <div class="d-flex justify-content-between small mb-1"><span>Cotton Yarn</span><span
+                class="text-muted-sl">82%</span></div>
+            <div class="sl-progress">
+              <div style="width:82%"></div>
+            </div>
+          </div>
+          <div class="mb-3">
+            <div class="d-flex justify-content-between small mb-1"><span>Raw Silk</span><span
+                class="text-muted-sl">54%</span></div>
+            <div class="sl-progress">
+              <div style="width:54%"></div>
+            </div>
+          </div>
+          <div class="mb-3">
+            <div class="d-flex justify-content-between small mb-1"><span>Pashmina Wool</span><span
+                class="text-muted-sl">23%</span></div>
+            <div class="sl-progress">
+              <div style="width:23%;background:var(--danger);"></div>
+            </div>
+          </div>
+          <div class="mb-3">
+            <div class="d-flex justify-content-between small mb-1"><span>Zari Thread</span><span
+                class="text-muted-sl">68%</span></div>
+            <div class="sl-progress">
+              <div style="width:68%"></div>
+            </div>
+          </div>
+          <div class="mb-0">
+            <div class="d-flex justify-content-between small mb-1"><span>Natural Dye</span><span
+                class="text-muted-sl">41%</span></div>
+            <div class="sl-progress">
+              <div style="width:41%;background:var(--warning);"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="sl-footer">
+    <div class="container">
+      <div class="sl-footer-bottom" style="border:none;margin:0;">© 2026 Smart Loom Supply Chain Management System</div>
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+
+</html>
