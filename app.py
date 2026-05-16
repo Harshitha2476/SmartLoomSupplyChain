@@ -1,7 +1,8 @@
-from flask import Flask, render_template, redirect, url_for, request
+from flask import Flask, render_template, redirect, url_for, request, session
 import mysql.connector
 
 app = Flask(__name__)
+app.secret_key = "smartloom_secret_key"
 db = mysql.connector.connect(
     host="localhost",
     user="root",
@@ -26,7 +27,16 @@ def index():
 # DASHBOARD PAGE
 @app.route('/dashboard')
 def dashboard():
-    return render_template('dashboard.html')
+
+    if 'user_id' not in session:
+
+        return redirect('/login')
+
+    return render_template(
+        'dashboard.html',
+        user_name=session['user_name'],
+        role=session['role']
+    )
 
 
 # PRODUCTS PAGE
@@ -54,7 +64,7 @@ def orders():
 
 # LOGIN PAGE
 @app.route('/login')
-def login():
+def login_page():
     return render_template('login.html')
 
 
@@ -136,6 +146,111 @@ def add_product():
 
     return redirect('/products')
 
+
+@app.route('/register', methods=['POST'])
+def register():
+
+    full_name = request.form['name']
+
+    email = request.form['email']
+
+    phone = request.form['phone']
+
+    password = request.form['password']
+
+    location = request.form['location']
+
+    role = request.form['role']
+
+    # CHECK IF EMAIL EXISTS
+
+    check_query = """
+    SELECT * FROM users
+    WHERE email=%s
+    """
+
+    cursor.execute(check_query, (email,))
+
+    existing_user = cursor.fetchone()
+
+    if existing_user:
+
+        return "Email already exists"
+
+    # INSERT USER
+
+    insert_query = """
+    INSERT INTO users
+    (
+        full_name,
+        email,
+        phone,
+        password,
+        role,
+        location
+    )
+
+    VALUES(%s,%s,%s,%s,%s,%s)
+    """
+
+    values = (
+        full_name,
+        email,
+        phone,
+        password,
+        role,
+        location
+    )
+
+    cursor.execute(insert_query, values)
+
+    db.commit()
+
+    return redirect('/login')
+@app.route('/login', methods=['POST'])
+def login():
+
+    email = request.form['email']
+
+    password = request.form['password']
+
+    role = request.form['role']
+
+    query = """
+    SELECT * FROM users
+    WHERE email=%s
+    AND password=%s
+    AND role=%s
+    """
+
+    values = (
+        email,
+        password,
+        role
+    )
+
+    cursor.execute(query, values)
+
+    user = cursor.fetchone()
+
+    if user:
+
+        session['user_id'] = user['user_id']
+
+        session['user_name'] = user['full_name']
+
+        session['role'] = user['role']
+
+        return redirect('/dashboard')
+
+    return "Invalid Email or Password"
+
+@app.route('/logout')
+def logout():
+
+    session.clear()
+
+    return redirect('/login')
 # OPTIONAL REDIRECTS FOR OLD .html LINKS
 
 @app.route('/index.html')

@@ -21,7 +21,7 @@
       <div class="collapse navbar-collapse" id="nav">
         <ul class="navbar-nav mx-auto">
           <li class="nav-item"><a class="nav-link sl-nav-link" href="/">Home</a></li>
-          <li class="nav-item"><a class="nav-link sl-nav-link" href="/dashboard.">Dashboard</a></li>
+          <li class="nav-item"><a class="nav-link sl-nav-link" href="/dashboard">Dashboard</a></li>
           <li class="nav-item"><a class="nav-link sl-nav-link" href="/orders">Orders</a></li>
         </ul>
         <div class="d-flex gap-2">
@@ -51,7 +51,7 @@
             <button class="sl-tab-btn" data-sl-tab="register">Register</button>
           </div>
 
-          <div class="mb-3" data-sl-role-group>
+          <!-- <div class="mb-3" data-sl-role-group>
             <div class="sl-form-label">Role</div>
             <div class="sl-role-grid">
               <button type="button" class="sl-role-btn active" data-role="Weaver">Weaver</button>
@@ -60,10 +60,11 @@
               <button type="button" class="sl-role-btn" data-role="Admin">Admin</button>
             </div>
             <input type="hidden" name="role" value="Weaver" />
-          </div>
+          </div> -->
+
 
           <!-- LOGIN -->
-          <form data-sl-tab-panel="login" method="POST" action="#">
+          <form data-sl-tab-panel="login" method="POST" action="/login">
             <div class="mb-3">
               <label class="sl-form-label">Email</label>
               <input type="email" name="email" class="sl-input" placeholder="you@smartloom.in" />
@@ -72,6 +73,34 @@
               <label class="sl-form-label">Password</label>
               <input type="password" name="password" class="sl-input" placeholder="••••••••" />
             </div>
+
+            <div class="mb-3" data-sl-role-group>
+
+              <div class="sl-form-label">Role</div>
+
+              <div class="sl-role-grid">
+
+                <button type="button" class="sl-role-btn active" data-role="Weaver">
+                  Weaver
+                </button>
+
+                <button type="button" class="sl-role-btn" data-role="Supplier">
+                  Supplier
+                </button>
+
+                <button type="button" class="sl-role-btn" data-role="Buyer">
+                  Buyer
+                </button>
+
+                <button type="button" class="sl-role-btn" data-role="Admin">
+                  Admin
+                </button>
+
+              </div>
+
+              <input type="hidden" name="role" value="Weaver">
+
+            </div>
             <button type="submit" class="btn btn-accent-sl w-100 mt-2">Login</button>
             <p class="text-center text-muted-sl small mt-3 mb-0">New to Smart Loom? <a href="#"
                 onclick="document.querySelector('[data-sl-tab=\'register\']').click();return false;">Create an
@@ -79,7 +108,7 @@
           </form>
 
           <!-- REGISTER -->
-          <form data-sl-tab-panel="register" method="POST" action="#" style="display:none;">
+          <form data-sl-tab-panel="register" method="POST" action="/register" style="display:none;">
             <div class="mb-3"><label class="sl-form-label">Full Name</label><input type="text" name="name"
                 class="sl-input" placeholder="Anika Verma" /></div>
             <div class="mb-3"><label class="sl-form-label">Email</label><input type="email" name="email"
@@ -89,7 +118,36 @@
             <div class="mb-3"><label class="sl-form-label">Password</label><input type="password" name="password"
                 class="sl-input" placeholder="••••••••" /></div>
             <div class="mb-3"><label class="sl-form-label">Location</label><input type="text" name="location"
-                class="sl-input" placeholder="City, State" /></div>
+                class="sl-input" placeholder="City, State" />
+            </div>
+
+            <div class="mb-3" data-sl-role-group>
+
+              <div class="sl-form-label">Role</div>
+
+              <div class="sl-role-grid">
+
+                <button type="button" class="sl-role-btn active" data-role="Weaver">
+                  Weaver
+                </button>
+
+                <button type="button" class="sl-role-btn" data-role="Supplier">
+                  Supplier
+                </button>
+
+                <button type="button" class="sl-role-btn" data-role="Buyer">
+                  Buyer
+                </button>
+
+                <button type="button" class="sl-role-btn" data-role="Admin">
+                  Admin
+                </button>
+
+              </div>
+
+              <input type="hidden" name="role" value="Weaver">
+
+            </div>
             <button type="submit" class="btn btn-accent-sl w-100 mt-2">Register</button>
             <p class="text-center text-muted-sl small mt-3 mb-0">Already a partner? <a href="#"
                 onclick="document.querySelector('[data-sl-tab=\'login\']').click();return false;">Sign in</a></p>

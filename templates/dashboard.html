@@ -11,23 +11,46 @@
 </head>
 
 <body>
+  <h5>Welcome, {{ user_name }}</h5>
 
+  <p>Role: {{ role }}</p>
   <nav class="sl-navbar navbar navbar-expand-lg">
     <div class="container">
-      <a class="navbar-brand" href="/index.html"><span class="sl-logo">SL</span><span>Smart Loom<span
-            class="sl-brand-sub">Supply Chain</span></span></a>
+      <a class="navbar-brand" href="/"><span class="sl-logo">SL</span><span>Smart Loom<span class="sl-brand-sub">Supply
+            Chain</span></span></a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#nav"><span
           class="navbar-toggler-icon"></span></button>
       <div class="collapse navbar-collapse" id="nav">
         <ul class="navbar-nav mx-auto">
-          <li class="nav-item"><a class="nav-link sl-nav-link" href="/index.html">Home</a></li>
-          <li class="nav-item"><a class="nav-link sl-nav-link" href="/dashboard.html">Dashboard</a></li>
-          <li class="nav-item"><a class="nav-link sl-nav-link" href="/products.html">Products</a></li>
-          <li class="nav-item"><a class="nav-link sl-nav-link" href="/orders.html">Orders</a></li>
+          <li class="nav-item"><a class="nav-link sl-nav-link" href="/">Home</a></li>
+          <li class="nav-item"><a class="nav-link sl-nav-link" href="/dashboard">Dashboard</a></li>
+          <li class="nav-item"><a class="nav-link sl-nav-link" href="/products">Products</a></li>
+          <li class="nav-item"><a class="nav-link sl-nav-link" href="/orders">Orders</a></li>
         </ul>
         <div class="d-flex gap-2">
-          <a href="/login.html" class="btn btn-outline-sl">Login</a>
-          <a href="/login.html" class="btn btn-accent-sl">Get Started</a>
+
+          {% if session.get('user_id') %}
+
+          <span class="navbar-text">
+            Welcome, {{ session['user_name'] }}
+          </span>
+
+          <a href="/logout" class="btn btn-outline-sl">
+            Logout
+          </a>
+
+          {% else %}
+
+          <a href="/login" class="btn btn-outline-sl">
+            Login
+          </a>
+
+          <a href="/login" class="btn btn-accent-sl">
+            Get Started
+          </a>
+
+          {% endif %}
+
         </div>
       </div>
     </div>
@@ -88,7 +111,7 @@
         <div class="sl-card">
           <div class="d-flex justify-content-between align-items-center p-4 pb-3">
             <h5 class="mb-0">Recent Orders</h5>
-            <a href="/orders.html" class="text-decoration-none small">View all <i class="bi bi-arrow-right"></i></a>
+            <a href="/orders" class="text-decoration-none small">View all <i class="bi bi-arrow-right"></i></a>
           </div>
           <div class="table-responsive">
             <table class="sl-table">

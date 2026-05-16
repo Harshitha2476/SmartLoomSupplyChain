@@ -17,7 +17,7 @@
   <!-- NAVBAR -->
   <nav class="sl-navbar navbar navbar-expand-lg">
     <div class="container">
-      <a class="navbar-brand" href="/index">
+      <a class="navbar-brand" href="/">
         <span class="sl-logo">SL</span>
         <span>
           Smart Loom
@@ -29,14 +29,35 @@
       </button>
       <div class="collapse navbar-collapse" id="nav">
         <ul class="navbar-nav mx-auto">
-          <li class="nav-item"><a class="nav-link sl-nav-link" href="/index">Home</a></li>
+          <li class="nav-item"><a class="nav-link sl-nav-link" href="/">Home</a></li>
           <li class="nav-item"><a class="nav-link sl-nav-link" href="/dashboard">Dashboard</a></li>
           <li class="nav-item"><a class="nav-link sl-nav-link" href="/products">Products</a></li>
           <li class="nav-item"><a class="nav-link sl-nav-link" href="/orders">Orders</a></li>
         </ul>
         <div class="d-flex gap-2">
-          <a href="/login" class="btn btn-outline-sl">Login</a>
-          <a href="/login" class="btn btn-accent-sl">Get Started</a>
+
+          {% if session.get('user_id') %}
+
+          <span class="navbar-text">
+            Welcome, {{ session['user_name'] }}
+          </span>
+
+          <a href="/logout" class="btn btn-outline-sl">
+            Logout
+          </a>
+
+          {% else %}
+
+          <a href="/login" class="btn btn-outline-sl">
+            Login
+          </a>
+
+          <a href="/login" class="btn btn-accent-sl">
+            Get Started
+          </a>
+
+          {% endif %}
+
         </div>
       </div>
     </div>
