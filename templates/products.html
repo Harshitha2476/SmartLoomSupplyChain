@@ -82,7 +82,7 @@
               <th class="text-end">Actions</th>
             </tr>
           </thead>
-          <tbody>
+          <!-- <tbody>
             <tr>
               <td>P-1001</td>
               <td>Banarasi Silk Saree</td>
@@ -155,6 +155,49 @@
                 <button class="btn btn-sm btn-outline-sl text-danger"><i class="bi bi-trash"></i></button>
               </td>
             </tr>
+          </tbody> -->
+          <tbody>
+
+            {% for product in products %}
+
+            <tr>
+
+              <td>{{ product.product_code }}</td>
+
+              <td>{{ product.product_name }}</td>
+
+              <td>
+                <span class="sl-badge sl-badge-accent">
+                  {{ product.category }}
+                </span>
+              </td>
+
+              <td>{{ product.weaver_name }}</td>
+
+              <td class="text-end">
+                ₹{{ product.price }}
+              </td>
+
+              <td class="text-end">
+                {{ product.stock }}
+              </td>
+
+              <td class="text-end">
+
+                <button class="btn btn-sm btn-outline-sl">
+                  <i class="bi bi-pencil"></i>
+                </button>
+
+                <button class="btn btn-sm btn-outline-sl text-danger">
+                  <i class="bi bi-trash"></i>
+                </button>
+
+              </td>
+
+            </tr>
+
+            {% endfor %}
+
           </tbody>
         </table>
       </div>
@@ -169,7 +212,7 @@
           <h5 class="modal-title" style="font-family:'Playfair Display',serif;">Add New Product</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
-        <form method="POST" action="#">
+        <form method="POST" action="/add_product">
           <div class="modal-body">
             <div class="row g-3">
               <div class="col-md-6"><label class="sl-form-label">Product Name</label><input class="sl-input" name="name"
