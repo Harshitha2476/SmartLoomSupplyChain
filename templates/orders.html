@@ -11,7 +11,30 @@
 </head>
 
 <body>
+  {% with messages = get_flashed_messages(with_categories=true) %}
 
+  {% if messages %}
+
+  <div class="container mt-3">
+
+    {% for category, message in messages %}
+
+    <div class="alert alert-{{ category }} alert-dismissible fade show">
+
+      {{ message }}
+
+      <button type="button" class="btn-close" data-bs-dismiss="alert">
+      </button>
+
+    </div>
+
+    {% endfor %}
+
+  </div>
+
+  {% endif %}
+
+  {% endwith %}
   <nav class="sl-navbar navbar navbar-expand-lg">
     <div class="container">
       <a class="navbar-brand" href="/"><span class="sl-logo">SL</span><span>Smart Loom<span class="sl-brand-sub">Supply
@@ -24,6 +47,45 @@
           <li class="nav-item"><a class="nav-link sl-nav-link" href="/dashboard">Dashboard</a></li>
           <li class="nav-item"><a class="nav-link sl-nav-link" href="/products">Products</a></li>
           <li class="nav-item"><a class="nav-link sl-nav-link" href="/orders">Orders</a></li>
+          {% if session['role'] == 'Supplier' %}
+
+          <li class="nav-item">
+            <a class="nav-link sl-nav-link" href="/materials">
+              Materials
+            </a>
+          </li>
+
+          <li class="nav-item">
+            <a class="nav-link sl-nav-link" href="/supplier_requests">
+              Requests
+            </a>
+          </li>
+
+          {% endif %}
+
+          {% if session['role'] == 'Weaver' %}
+
+          <li class="nav-item">
+            <a class="nav-link sl-nav-link" href="/material_requests">
+              Material Requests
+            </a>
+          </li>
+
+          {% endif %}
+
+          {% if session['role'] == 'Admin' %}
+
+          <li class="nav-item">
+
+            <a class="nav-link sl-nav-link" href="/admin">
+
+              Admin Panel
+
+            </a>
+
+          </li>
+
+          {% endif %}
         </ul>
         <div class="d-flex gap-2">
 
@@ -60,7 +122,10 @@
         <h1>Orders</h1>
         <p>Track every order from buyer to weaver to delivery.</p>
       </div>
-      <button class="btn btn-accent-sl"><i class="bi bi-plus-lg me-1"></i> New Order</button>
+      <a href="/products" class="btn btn-accent-sl">
+        <i class="bi bi-plus-lg me-1"></i>
+        Create Order
+      </a>
     </div>
   </header>
 
@@ -132,7 +197,7 @@
               <th class="text-end">Actions</th>
             </tr>
           </thead>
-          <tbody>
+          <!-- <tbody>
             <tr>
               <td>#ORD-1042</td>
               <td>Riya Mehta</td>
@@ -205,6 +270,113 @@
               <td class="text-end">₹2,200</td>
               <td class="text-end"><button class="btn btn-sm btn-outline-sl"><i class="bi bi-eye"></i></button></td>
             </tr>
+          </tbody> -->
+          <tbody>
+
+            {% for order in orders %}
+
+            <tr>
+
+              <td>#ORD-{{ order.order_id }}</td>
+
+              <td>
+
+                {% if order.full_name %}
+
+                {{ order.full_name }}
+
+                {% else %}
+
+                {{ session['user_name'] }}
+
+                {% endif %}
+
+              </td>
+
+              <td>{{ order.product_name }}</td>
+
+              <td>{{ order.order_date }}</td>
+
+              <td>
+
+                {% if order.order_status == 'Delivered' %}
+
+                <span class="sl-badge sl-badge-success">
+                  {{ order.order_status }}
+                </span>
+
+                {% elif order.order_status == 'Pending' %}
+
+                <span class="sl-badge sl-badge-warning">
+                  {{ order.order_status }}
+                </span>
+
+                {% elif order.order_status == 'Cancelled' %}
+
+                <span class="sl-badge sl-badge-danger">
+                  {{ order.order_status }}
+                </span>
+
+                {% else %}
+
+                <span class="sl-badge sl-badge-accent">
+                  {{ order.order_status }}
+                </span>
+
+                {% endif %}
+
+              </td>
+
+              <td class="text-end">
+                ₹{{ order.total_price }}
+              </td>
+
+              <td class="text-end">
+
+                {% if session['role'] == 'Weaver' or session['role'] == 'Admin' %}
+
+                <form method="POST" action="/update_order_status">
+
+                  <input type="hidden" name="order_id" value="{{ order.order_id }}">
+
+                  <select name="status" class="form-select form-select-sm mb-2">
+
+                    <option>Pending</option>
+
+                    <option>Processing</option>
+
+                    <option>Shipped</option>
+
+                    <option>Delivered</option>
+
+                    <option>Cancelled</option>
+
+                  </select>
+
+                  <button class="btn btn-sm btn-accent-sl">
+
+                    Update
+
+                  </button>
+
+                </form>
+
+                {% else %}
+
+                <button class="btn btn-sm btn-outline-sl">
+
+                  <i class="bi bi-eye"></i>
+
+                </button>
+
+                {% endif %}
+
+              </td>
+
+            </tr>
+
+            {% endfor %}
+
           </tbody>
         </table>
       </div>

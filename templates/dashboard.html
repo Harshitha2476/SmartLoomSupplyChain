@@ -11,9 +11,7 @@
 </head>
 
 <body>
-  <h5>Welcome, {{ user_name }}</h5>
 
-  <p>Role: {{ role }}</p>
   <nav class="sl-navbar navbar navbar-expand-lg">
     <div class="container">
       <a class="navbar-brand" href="/"><span class="sl-logo">SL</span><span>Smart Loom<span class="sl-brand-sub">Supply
@@ -26,6 +24,46 @@
           <li class="nav-item"><a class="nav-link sl-nav-link" href="/dashboard">Dashboard</a></li>
           <li class="nav-item"><a class="nav-link sl-nav-link" href="/products">Products</a></li>
           <li class="nav-item"><a class="nav-link sl-nav-link" href="/orders">Orders</a></li>
+
+          {% if session['role'] == 'Supplier' %}
+
+          <li class="nav-item">
+            <a class="nav-link sl-nav-link" href="/materials">
+              Materials
+            </a>
+          </li>
+
+          <li class="nav-item">
+            <a class="nav-link sl-nav-link" href="/supplier_requests">
+              Requests
+            </a>
+          </li>
+
+          {% endif %}
+
+          {% if session['role'] == 'Weaver' %}
+
+          <li class="nav-item">
+            <a class="nav-link sl-nav-link" href="/material_requests">
+              Material Requests
+            </a>
+          </li>
+
+          {% endif %}
+
+          {% if session['role'] == 'Admin' %}
+
+          <li class="nav-item">
+
+            <a class="nav-link sl-nav-link" href="/admin">
+
+              Admin Panel
+
+            </a>
+
+          </li>
+
+          {% endif %}
         </ul>
         <div class="d-flex gap-2">
 
@@ -72,7 +110,7 @@
           <div class="d-flex justify-content-between align-items-start mb-3"><span class="text-muted-sl text-uppercase"
               style="font-size:.7rem;letter-spacing:.1em;">Products</span><i
               class="bi bi-box-seam sl-icon-accent fs-5"></i></div>
-          <div style="font-family:'Playfair Display',serif;font-size:1.8rem;font-weight:600;">248</div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.8rem;font-weight:600;">{{ total_products }}</div>
           <div class="sl-badge sl-badge-success mt-2">+12 this week</div>
         </div>
       </div>
@@ -81,7 +119,7 @@
           <div class="d-flex justify-content-between align-items-start mb-3"><span class="text-muted-sl text-uppercase"
               style="font-size:.7rem;letter-spacing:.1em;">Orders</span><i class="bi bi-truck sl-icon-accent fs-5"></i>
           </div>
-          <div style="font-family:'Playfair Display',serif;font-size:1.8rem;font-weight:600;">342</div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.8rem;font-weight:600;">{{ total_orders }}</div>
           <div class="sl-badge sl-badge-success mt-2">+8% MoM</div>
         </div>
       </div>
@@ -90,7 +128,7 @@
           <div class="d-flex justify-content-between align-items-start mb-3"><span class="text-muted-sl text-uppercase"
               style="font-size:.7rem;letter-spacing:.1em;">Suppliers</span><i
               class="bi bi-people sl-icon-accent fs-5"></i></div>
-          <div style="font-family:'Playfair Display',serif;font-size:1.8rem;font-weight:600;">86</div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.8rem;font-weight:600;">{{ total_users }}</div>
           <div class="sl-badge sl-badge-muted mt-2">Active</div>
         </div>
       </div>
@@ -99,7 +137,7 @@
           <div class="d-flex justify-content-between align-items-start mb-3"><span class="text-muted-sl text-uppercase"
               style="font-size:.7rem;letter-spacing:.1em;">Revenue</span><i
               class="bi bi-bar-chart sl-icon-accent fs-5"></i></div>
-          <div style="font-family:'Playfair Display',serif;font-size:1.8rem;font-weight:600;">₹8.2L</div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.8rem;font-weight:600;">₹{{ total_revenue }}</div>
           <div class="sl-badge sl-badge-warning mt-2">This month</div>
         </div>
       </div>
@@ -125,41 +163,61 @@
                 </tr>
               </thead>
               <tbody>
+
+                {% for order in recent_orders %}
+
                 <tr>
-                  <td>#ORD-1042</td>
-                  <td>Riya Mehta</td>
-                  <td>Banarasi Silk Saree</td>
-                  <td><span class="sl-badge sl-badge-success">Delivered</span></td>
-                  <td class="text-end">₹14,500</td>
+
+                  <td>
+                    #ORD-{{ order.order_id }}
+                  </td>
+
+                  <td>
+                    {{ session['user_name'] }}
+                  </td>
+
+                  <td>
+                    {{ order.product_name }}
+                  </td>
+
+                  <td>
+
+                    {% if order.order_status == 'Delivered' %}
+
+                    <span class="sl-badge sl-badge-success">
+                      {{ order.order_status }}
+                    </span>
+
+                    {% elif order.order_status == 'Pending' %}
+
+                    <span class="sl-badge sl-badge-warning">
+                      {{ order.order_status }}
+                    </span>
+
+                    {% elif order.order_status == 'Cancelled' %}
+
+                    <span class="sl-badge sl-badge-danger">
+                      {{ order.order_status }}
+                    </span>
+
+                    {% else %}
+
+                    <span class="sl-badge sl-badge-accent">
+                      {{ order.order_status }}
+                    </span>
+
+                    {% endif %}
+
+                  </td>
+
+                  <td class="text-end">
+                    ₹{{ order.total_price }}
+                  </td>
+
                 </tr>
-                <tr>
-                  <td>#ORD-1041</td>
-                  <td>Kabir Sethi</td>
-                  <td>Khadi Cotton Bale</td>
-                  <td><span class="sl-badge sl-badge-warning">In Transit</span></td>
-                  <td class="text-end">₹8,200</td>
-                </tr>
-                <tr>
-                  <td>#ORD-1040</td>
-                  <td>Anika Verma</td>
-                  <td>Pashmina Shawl</td>
-                  <td><span class="sl-badge sl-badge-accent">Processing</span></td>
-                  <td class="text-end">₹22,000</td>
-                </tr>
-                <tr>
-                  <td>#ORD-1039</td>
-                  <td>Vikram Joshi</td>
-                  <td>Chanderi Dupatta Set</td>
-                  <td><span class="sl-badge sl-badge-success">Delivered</span></td>
-                  <td class="text-end">₹6,750</td>
-                </tr>
-                <tr>
-                  <td>#ORD-1038</td>
-                  <td>Saanvi Iyer</td>
-                  <td>Tussar Silk Yardage</td>
-                  <td><span class="sl-badge sl-badge-danger">Cancelled</span></td>
-                  <td class="text-end">₹3,400</td>
-                </tr>
+
+                {% endfor %}
+
               </tbody>
             </table>
           </div>
@@ -167,45 +225,56 @@
       </div>
 
       <!-- INVENTORY -->
+      <!-- LOW STOCK -->
+
       <div class="col-lg-4">
+
         <div class="sl-card p-4 h-100">
-          <h5 class="mb-3">Inventory Status</h5>
+
+          <h5 class="mb-3">
+            Low Stock Alerts
+          </h5>
+
+          {% if low_stock_products %}
+
+          {% for product in low_stock_products %}
+
           <div class="mb-3">
-            <div class="d-flex justify-content-between small mb-1"><span>Cotton Yarn</span><span
-                class="text-muted-sl">82%</span></div>
-            <div class="sl-progress">
-              <div style="width:82%"></div>
+
+            <div class="d-flex justify-content-between">
+
+              <span>
+                {{ product.product_name }}
+              </span>
+
+              <span class="text-danger">
+
+                {{ product.stock }} left
+
+              </span>
+
             </div>
-          </div>
-          <div class="mb-3">
-            <div class="d-flex justify-content-between small mb-1"><span>Raw Silk</span><span
-                class="text-muted-sl">54%</span></div>
-            <div class="sl-progress">
-              <div style="width:54%"></div>
+
+            <div class="sl-progress mt-1">
+
+              <div style="width:20%;background:var(--danger);"></div>
+
             </div>
+
           </div>
-          <div class="mb-3">
-            <div class="d-flex justify-content-between small mb-1"><span>Pashmina Wool</span><span
-                class="text-muted-sl">23%</span></div>
-            <div class="sl-progress">
-              <div style="width:23%;background:var(--danger);"></div>
-            </div>
-          </div>
-          <div class="mb-3">
-            <div class="d-flex justify-content-between small mb-1"><span>Zari Thread</span><span
-                class="text-muted-sl">68%</span></div>
-            <div class="sl-progress">
-              <div style="width:68%"></div>
-            </div>
-          </div>
-          <div class="mb-0">
-            <div class="d-flex justify-content-between small mb-1"><span>Natural Dye</span><span
-                class="text-muted-sl">41%</span></div>
-            <div class="sl-progress">
-              <div style="width:41%;background:var(--warning);"></div>
-            </div>
-          </div>
+
+          {% endfor %}
+
+          {% else %}
+
+          <p class="text-muted-sl">
+            No low stock products.
+          </p>
+
+          {% endif %}
+
         </div>
+
       </div>
     </div>
   </section>

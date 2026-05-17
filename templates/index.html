@@ -33,6 +33,47 @@
           <li class="nav-item"><a class="nav-link sl-nav-link" href="/dashboard">Dashboard</a></li>
           <li class="nav-item"><a class="nav-link sl-nav-link" href="/products">Products</a></li>
           <li class="nav-item"><a class="nav-link sl-nav-link" href="/orders">Orders</a></li>
+
+          {% if session['role'] == 'Supplier' %}
+
+          <li class="nav-item">
+            <a class="nav-link sl-nav-link" href="/materials">
+              Materials
+            </a>
+          </li>
+
+          <li class="nav-item">
+            <a class="nav-link sl-nav-link" href="/supplier_requests">
+              Requests
+            </a>
+          </li>
+
+          {% endif %}
+
+          {% if session['role'] == 'Weaver' %}
+
+          <li class="nav-item">
+            <a class="nav-link sl-nav-link" href="/material_requests">
+              Material Requests
+            </a>
+          </li>
+
+          {% endif %}
+
+          {% if session['role'] == 'Admin' %}
+
+          <li class="nav-item">
+
+            <a class="nav-link sl-nav-link" href="/admin">
+
+              Admin Panel
+
+            </a>
+
+          </li>
+
+          {% endif %}
+
         </ul>
         <div class="d-flex gap-2">
 
