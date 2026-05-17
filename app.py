@@ -149,6 +149,8 @@ def products():
     if 'user_id' not in session:
 
         return redirect('/login')
+    if session['role'] not in ['Buyer', 'Weaver', 'Admin']:
+        return redirect('/dashboard')
     query = "SELECT * FROM products"
 
     cursor.execute(query)
@@ -426,6 +428,8 @@ def place_order():
     if 'user_id' not in session:
 
         return redirect('/login')
+    if session['role'] not in ['Buyer', 'Admin']:
+        return redirect('/dashboard')
 
     user_id = session['user_id']
 
@@ -499,6 +503,8 @@ def place_order():
 
 def update_order_status():
 
+    if session['role'] not in ['Weaver', 'Admin']:
+        return redirect('/dashboard')
     order_id = request.form['order_id']
 
     status = request.form['status']
@@ -524,7 +530,7 @@ def materials():
     if 'user_id' not in session:
         return redirect('/login')
 
-    if session['role'] != 'Supplier':
+    if session['role'] not in ['Supplier', 'Admin']:
         return redirect('/dashboard')
 
     supplier_id = session['user_id']
@@ -609,7 +615,7 @@ def material_requests():
     if 'user_id' not in session:
         return redirect('/login')
 
-    if session['role'] != 'Weaver':
+    if session['role'] not in ['Weaver', 'Admin']:
         return redirect('/dashboard')
 
     query = """
@@ -630,7 +636,8 @@ def request_material():
 
     if session['role'] != 'Weaver':
         return redirect('/dashboard')
-
+    if session['role'] not in ['Weaver', 'Admin']:
+        return redirect('/dashboard')
     weaver_id = session['user_id']
 
     supplier_id = request.form['supplier_id']
@@ -668,7 +675,10 @@ def request_material():
 @app.route('/supplier_requests')
 def supplier_requests():
 
-    if session['role'] != 'Supplier':
+    if 'user_id' not in session:
+        return redirect('/login')
+
+    if session['role'] not in ['Supplier', 'Admin']:
         return redirect('/dashboard')
 
     supplier_id = session['user_id']
@@ -699,7 +709,7 @@ def supplier_requests():
 @app.route('/update_material_status/<int:id>/<status>')
 def update_material_status(id, status):
 
-    if session['role'] != 'Supplier':
+    if session['role'] not in ['Supplier', 'Admin']:
         return redirect('/dashboard')
 
     # GET REQUEST
