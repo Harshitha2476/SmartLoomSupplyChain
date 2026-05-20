@@ -80,9 +80,10 @@
     </nav>
     <div class="container py-5">
 
-        <h1 class="mb-5">
-            Admin Dashboard
-        </h1>
+        <div class="d-flex justify-content-between align-items-center mb-5">
+            <h1 class="mb-0">Admin Dashboard</h1>
+            <a href="/reports" class="btn btn-accent-sl">Reports & Audit Log</a>
+        </div>
 
         <!-- ANALYTICS -->
 
@@ -201,6 +202,7 @@
                 </tbody>
 
             </table>
+            {% include 'partials/pagination.html' %}
 
         </div>
 

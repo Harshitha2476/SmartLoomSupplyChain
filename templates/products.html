@@ -123,34 +123,35 @@
         <h1>Products</h1>
         <p>Manage your fabric catalog, designs, prices, and stock levels.</p>
       </div>
+      {% if session['role'] in ['Weaver', 'Admin'] %}
       <button class="btn btn-accent-sl" data-bs-toggle="modal" data-bs-target="#addProductModal"><i
           class="bi bi-plus-lg me-1"></i> Add Product</button>
+      {% endif %}
     </div>
   </header>
 
   <section class="container py-5">
     <!-- TOOLBAR -->
-    <div class="row g-3 mb-4">
+    <form method="GET" class="row g-3 mb-4">
       <div class="col-md-6"><input type="search" class="sl-input" placeholder="Search products..."
           data-sl-search="#productsTable" /></div>
       <div class="col-md-3">
-        <select class="sl-input">
-          <option>All Categories</option>
-          <option>Saree</option>
-          <option>Dupatta</option>
-          <option>Yardage</option>
-          <option>Shawl</option>
+        <select class="sl-input" name="category" onchange="this.form.submit()">
+          <option value="">All Categories</option>
+          {% for cat in categories %}
+          <option value="{{ cat }}" {% if filter_category == cat %}selected{% endif %}>{{ cat }}</option>
+          {% endfor %}
         </select>
       </div>
       <div class="col-md-3">
-        <select class="sl-input">
-          <option>Sort: Newest</option>
-          <option>Price: Low to High</option>
-          <option>Price: High to Low</option>
-          <option>Stock</option>
+        <select class="sl-input" name="sort" onchange="this.form.submit()">
+          <option value="newest" {% if filter_sort == 'newest' %}selected{% endif %}>Sort: Newest</option>
+          <option value="price_asc" {% if filter_sort == 'price_asc' %}selected{% endif %}>Price: Low to High</option>
+          <option value="price_desc" {% if filter_sort == 'price_desc' %}selected{% endif %}>Price: High to Low</option>
+          <option value="stock" {% if filter_sort == 'stock' %}selected{% endif %}>Stock</option>
         </select>
       </div>
-    </div>
+    </form>
 
     <div class="sl-card">
       <div class="table-responsive">
@@ -194,28 +195,19 @@
               </td>
 
               <td class="text-end">
-
-                <!-- BUY BUTTON -->
-                <form method="POST" action="/place_order" style="display:inline;">
-
+                {% if session['role'] == 'Buyer' %}
+                <form method="POST" action="/place_order" class="d-inline-flex gap-1 align-items-center">
                   <input type="hidden" name="product_id" value="{{ product.product_id }}">
-
-                  <button type="submit" class="btn btn-sm btn-accent-sl">
-                    Buy
-                  </button>
-
+                  <input type="number" name="quantity" value="1" min="1" max="{{ product.stock }}" class="form-control form-control-sm" style="width:70px;">
+                  <button type="submit" class="btn btn-sm btn-accent-sl" {% if product.stock <= 0 %}disabled{% endif %}>Buy</button>
                 </form>
-
-                <!-- EDIT BUTTON -->
-                <button class="btn btn-sm btn-outline-sl">
-                  <i class="bi bi-pencil"></i>
-                </button>
-
-                <!-- DELETE BUTTON -->
-                <button class="btn btn-sm btn-outline-sl text-danger">
-                  <i class="bi bi-trash"></i>
-                </button>
-
+                {% endif %}
+                {% if session['role'] in ['Weaver', 'Admin'] %}
+                <a href="/edit_product/{{ product.product_id }}" class="btn btn-sm btn-outline-sl"><i class="bi bi-pencil"></i></a>
+                {% endif %}
+                {% if session['role'] == 'Admin' %}
+                <a href="/admin_delete_product/{{ product.product_id }}" class="btn btn-sm btn-outline-sl text-danger" onclick="return confirm('Delete product?')"><i class="bi bi-trash"></i></a>
+                {% endif %}
               </td>
 
             </tr>
@@ -225,10 +217,11 @@
           </tbody>
         </table>
       </div>
+      {% include 'partials/pagination.html' %}
     </div>
   </section>
 
-  <!-- ADD PRODUCT MODAL -->
+  {% if session['role'] in ['Weaver', 'Admin'] %}
   <div class="modal fade" id="addProductModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
       <div class="modal-content" style="border-radius:14px;border-color:var(--border);">
@@ -267,6 +260,7 @@
       </div>
     </div>
   </div>
+  {% endif %}
 
   <footer class="sl-footer">
     <div class="container">

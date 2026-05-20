@@ -1,954 +1,999 @@
-from flask import Flask, flash, render_template, redirect, url_for, request, session, flash
+from flask import (
+    Flask, flash, render_template, redirect, url_for,
+    request, session, jsonify,
+)
 import mysql.connector
 from functools import wraps
-from flask import jsonify
-from streamlit import status
+
+from helpers import (
+    PER_PAGE, hash_password, verify_password, needs_rehash,
+    log_activity, add_notification, notify_low_stock,
+    paginate, pagination_context,
+)
+
 app = Flask(__name__)
-
-def role_required(allowed_roles): #step 6
-
-    def decorator(f):
-
-        @wraps(f)
-
-        def wrapper(*args, **kwargs):
-
-            # USER NOT LOGGED IN
-            if 'user_id' not in session:
-
-                return redirect('/login')
-
-            # ROLE CHECK
-            if session['role'] not in allowed_roles:
-
-                return "Access Denied"
-
-            return f(*args, **kwargs)
-
-        return wrapper
-
-    return decorator
-
 app.secret_key = "smartloom_secret_key"
+
 db = mysql.connector.connect(
     host="localhost",
     user="root",
     password="password",
-    database="smartloom"
+    database="smartloom",
 )
-
 cursor = db.cursor(dictionary=True)
 
-# HOME PAGE
+
+def role_required(allowed_roles):
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            if 'user_id' not in session:
+                return redirect('/login')
+            if session['role'] not in allowed_roles:
+                return "Access Denied"
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def get_unread_notifications(user_id):
+    try:
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS cnt FROM notifications
+            WHERE user_id = %s AND is_read = 0
+            """,
+            (user_id,),
+        )
+        return cursor.fetchone()['cnt']
+    except Exception:
+        return 0
+
+
+def nav_context():
+    if 'user_id' not in session:
+        return {}
+    return {'unread_notifications': get_unread_notifications(session['user_id'])}
+
+
+# ─── HOME ───────────────────────────────────────────────────────────────────
+
 @app.route('/')
 def home():
-    return render_template('index.html')
+    return render_template('index.html', **nav_context())
 
 
-# HANDLE /index
 @app.route('/index')
 def index():
     return redirect(url_for('home'))
 
 
-# DASHBOARD PAGE
+# ─── DASHBOARD (charts + notifications) ─────────────────────────────────────
+
 @app.route('/dashboard')
 def dashboard():
-
-    # SESSION SECURITY
     if 'user_id' not in session:
-
         return redirect('/login')
 
-    # TOTAL PRODUCTS
-    cursor.execute(
-        "SELECT COUNT(*) AS total_products FROM products"
-    )
-
+    cursor.execute("SELECT COUNT(*) AS total_products FROM products")
     total_products = cursor.fetchone()['total_products']
 
-    # TOTAL ORDERS
-    cursor.execute(
-        "SELECT COUNT(*) AS total_orders FROM orders"
-    )
-
+    cursor.execute("SELECT COUNT(*) AS total_orders FROM orders")
     total_orders = cursor.fetchone()['total_orders']
 
-    # TOTAL USERS
-    cursor.execute(
-        "SELECT COUNT(*) AS total_users FROM users"
-    )
-
+    cursor.execute("SELECT COUNT(*) AS total_users FROM users")
     total_users = cursor.fetchone()['total_users']
 
-    # TOTAL REVENUE
-    cursor.execute(
-        """
-        SELECT SUM(total_price) AS revenue
-        FROM orders
-        """
-    )
-
+    cursor.execute("SELECT SUM(total_price) AS revenue FROM orders")
     revenue_result = cursor.fetchone()
+    total_revenue = revenue_result['revenue'] or 0
 
-    total_revenue = revenue_result['revenue']
-
-    if total_revenue is None:
-        total_revenue = 0
-
-    # LOW STOCK PRODUCTS
-    cursor.execute(
-        """
-        SELECT *
-        FROM products
-        WHERE stock < 10
-        """
-    )
-
+    cursor.execute("SELECT * FROM products WHERE stock < 10")
     low_stock_products = cursor.fetchall()
 
-    # RECENT ORDERS
+    for product in low_stock_products:
+        notify_low_stock(cursor, db, product)
+
     cursor.execute(
         """
-        SELECT
-            orders.order_id,
-            products.product_name,
-            orders.total_price,
-            orders.order_status
-
+        SELECT orders.order_id, products.product_name,
+               orders.total_price, orders.order_status
         FROM orders
-
-        JOIN products
-        ON orders.product_id = products.product_id
-
+        JOIN products ON orders.product_id = products.product_id
         ORDER BY orders.order_date DESC
-
         LIMIT 5
         """
     )
-
     recent_orders = cursor.fetchall()
 
+    # Chart: revenue by month (last 6 months)
+    cursor.execute(
+        """
+        SELECT DATE_FORMAT(order_date, '%%Y-%%m') AS month,
+               SUM(total_price) AS revenue
+        FROM orders
+        WHERE order_date >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+        GROUP BY DATE_FORMAT(order_date, '%%Y-%%m')
+        ORDER BY month
+        """
+    )
+    revenue_by_month = cursor.fetchall()
+
+    # Chart: orders by status
+    cursor.execute(
+        """
+        SELECT order_status AS status, COUNT(*) AS count
+        FROM orders
+        GROUP BY order_status
+        """
+    )
+    orders_by_status = cursor.fetchall()
+
+    notifications = []
+    try:
+        cursor.execute(
+            """
+            SELECT * FROM notifications
+            WHERE user_id = %s
+            ORDER BY created_at DESC
+            LIMIT 5
+            """,
+            (session['user_id'],),
+        )
+        notifications = cursor.fetchall()
+    except Exception:
+        pass
+
     return render_template(
-
         'dashboard.html',
-
         total_products=total_products,
         total_orders=total_orders,
         total_users=total_users,
         total_revenue=total_revenue,
         low_stock_products=low_stock_products,
-        recent_orders=recent_orders
-
+        recent_orders=recent_orders,
+        revenue_by_month=revenue_by_month,
+        orders_by_status=orders_by_status,
+        notifications=notifications,
+        **nav_context(),
     )
 
 
-# PRODUCTS PAGE
+@app.route('/notifications')
+def notifications_page():
+    if 'user_id' not in session:
+        return redirect('/login')
+    try:
+        cursor.execute(
+            """
+            SELECT * FROM notifications
+            WHERE user_id = %s
+            ORDER BY created_at DESC
+            """,
+            (session['user_id'],),
+        )
+        items = cursor.fetchall()
+        cursor.execute(
+            "UPDATE notifications SET is_read = 1 WHERE user_id = %s",
+            (session['user_id'],),
+        )
+        db.commit()
+    except Exception:
+        items = []
+        flash('Run database/upgrade_tier1_tier2.sql to enable notifications.', 'warning')
+    return render_template('notifications.html', notifications=items, **nav_context())
+
+
+# ─── PRODUCTS (pagination, filters, edit) ───────────────────────────────────
+
 @app.route('/products')
 @role_required(['Buyer', 'Weaver', 'Admin'])
 def products():
-    if 'user_id' not in session:
+    category = request.args.get('category', '').strip()
+    sort = request.args.get('sort', 'newest')
+    page = request.args.get('page', 1, type=int)
 
-        return redirect('/login')
-    if session['role'] not in ['Buyer', 'Weaver', 'Admin']:
-        return redirect('/dashboard')
-    query = "SELECT * FROM products"
+    where = " WHERE 1=1"
+    params = []
+    if category:
+        where += " AND category = %s"
+        params.append(category)
 
-    cursor.execute(query)
+    order = " ORDER BY product_id DESC"
+    if sort == 'price_asc':
+        order = " ORDER BY price ASC"
+    elif sort == 'price_desc':
+        order = " ORDER BY price DESC"
+    elif sort == 'stock':
+        order = " ORDER BY stock ASC"
 
-    all_products = cursor.fetchall()
+    count_sql = f"SELECT COUNT(*) AS c FROM products{where}"
+    data_sql = f"SELECT * FROM products{where}{order}"
+
+    rows, page, total_pages, total_count = paginate(
+        cursor, count_sql, data_sql, tuple(params), page
+    )
+
+    cursor.execute("SELECT DISTINCT category FROM products ORDER BY category")
+    categories = [r['category'] for r in cursor.fetchall()]
 
     return render_template(
         'products.html',
-        products=all_products
+        products=rows,
+        categories=categories,
+        filter_category=category,
+        filter_sort=sort,
+        pagination=pagination_context(
+            page, total_pages, total_count, '/products',
+            {'category': category, 'sort': sort},
+        ),
+        **nav_context(),
     )
 
-
-
-# ORDERS PAGE
-@app.route('/orders')
-
-@role_required(['Buyer', 'Weaver', 'Admin'])
-
-def orders():
-
-    # BUYER
-    if session['role'] == 'Buyer':
-
-        query = """
-        SELECT
-            orders.order_id,
-            products.product_name,
-            orders.quantity,
-            orders.total_price,
-            orders.order_status,
-            orders.order_date
-
-        FROM orders
-
-        JOIN products
-        ON orders.product_id = products.product_id
-
-        WHERE orders.user_id=%s
-
-        ORDER BY orders.order_date DESC
-        """
-
-        cursor.execute(
-            query,
-            (session['user_id'],)
-        )
-
-    else:
-
-        # WEAVER + ADMIN
-        query = """
-        SELECT
-            orders.order_id,
-            users.full_name,
-            products.product_name,
-            orders.quantity,
-            orders.total_price,
-            orders.order_status,
-            orders.order_date
-
-        FROM orders
-
-        JOIN users
-        ON orders.user_id = users.user_id
-
-        JOIN products
-        ON orders.product_id = products.product_id
-
-        ORDER BY orders.order_date DESC
-        """
-
-        cursor.execute(query)
-
-    all_orders = cursor.fetchall()
-
-    return render_template(
-        'orders.html',
-        orders=all_orders
-    )
-
-
-# LOGIN PAGE
-@app.route('/login')
-def login_page():
-    return render_template('login.html')
-
-
-@app.route('/testdb')
-def testdb():
-
-    cursor.execute("SHOW TABLES")
-
-    tables = cursor.fetchall()
-
-    return str(tables)
 
 @app.route('/add_product', methods=['POST'])
 @role_required(['Weaver', 'Admin'])
 def add_product():
-
     name = request.form['name']
-
     category = request.form['category']
-
-    weaver = request.form['weaver']
-
     price = request.form['price']
-
     stock = request.form['stock']
-
     description = request.form['description']
 
-    # FIRST INSERT WITHOUT PRODUCT CODE
+    weaver_id = session['user_id'] if session['role'] == 'Weaver' else None
+    weaver_name = session['user_name'] if session['role'] == 'Weaver' else request.form.get('weaver', '')
 
-    query = """
-    INSERT INTO products
-    (
-        product_name,
-        category,
-        weaver_name,
-        price,
-        stock,
-        description
+    if session['role'] == 'Admin' and request.form.get('weaver'):
+        weaver_name = request.form['weaver']
+
+    try:
+        db.start_transaction()
+        cursor.execute(
+            """
+            INSERT INTO products
+            (product_name, category, weaver_name, weaver_id, price, stock, description)
+            VALUES (%s,%s,%s,%s,%s,%s,%s)
+            """,
+            (name, category, weaver_name, weaver_id, price, stock, description),
+        )
+        product_id = cursor.lastrowid
+        product_code = f"P-{1000 + product_id}"
+        cursor.execute(
+            "UPDATE products SET product_code=%s WHERE product_id=%s",
+            (product_code, product_id),
+        )
+        db.commit()
+        log_activity(cursor, db, session['user_id'], 'ADD_PRODUCT', 'products', product_id)
+        flash('Product added successfully!', 'success')
+    except Exception as e:
+        db.rollback()
+        flash(f'Error adding product: {e}', 'danger')
+    return redirect('/products')
+
+
+@app.route('/edit_product/<int:product_id>', methods=['GET', 'POST'])
+@role_required(['Weaver', 'Admin'])
+def edit_product(product_id):
+    cursor.execute("SELECT * FROM products WHERE product_id=%s", (product_id,))
+    product = cursor.fetchone()
+    if not product:
+        flash('Product not found.', 'danger')
+        return redirect('/products')
+
+    if session['role'] == 'Weaver' and product.get('weaver_id') != session['user_id']:
+        if product.get('weaver_name') != session['user_name']:
+            return "Access Denied"
+
+    if request.method == 'POST':
+        cursor.execute(
+            """
+            UPDATE products SET
+                product_name=%s, category=%s, weaver_name=%s,
+                price=%s, stock=%s, description=%s
+            WHERE product_id=%s
+            """,
+            (
+                request.form['name'],
+                request.form['category'],
+                request.form.get('weaver', product['weaver_name']),
+                request.form['price'],
+                request.form['stock'],
+                request.form['description'],
+                product_id,
+            ),
+        )
+        db.commit()
+        log_activity(cursor, db, session['user_id'], 'EDIT_PRODUCT', 'products', product_id)
+        flash('Product updated.', 'success')
+        return redirect('/products')
+
+    return render_template('edit_product.html', product=product, **nav_context())
+
+
+# ─── ORDERS (quantity, cancel, filters, pagination) ─────────────────────────
+
+@app.route('/orders')
+@role_required(['Buyer', 'Weaver', 'Admin'])
+def orders():
+    status_filter = request.args.get('status', '').strip()
+    days = request.args.get('days', '').strip()
+    page = request.args.get('page', 1, type=int)
+
+    where = ""
+    params = []
+
+    if session['role'] == 'Buyer':
+        base_from = """
+            FROM orders
+            JOIN products ON orders.product_id = products.product_id
+            WHERE orders.user_id = %s
+        """
+        params = [session['user_id']]
+        select_cols = """
+            orders.order_id, products.product_name, orders.quantity,
+            orders.total_price, orders.order_status, orders.order_date,
+            orders.product_id
+        """
+    else:
+        base_from = """
+            FROM orders
+            JOIN users ON orders.user_id = users.user_id
+            JOIN products ON orders.product_id = products.product_id
+            WHERE 1=1
+        """
+        select_cols = """
+            orders.order_id, users.full_name, products.product_name,
+            orders.quantity, orders.total_price, orders.order_status,
+            orders.order_date, orders.product_id
+        """
+
+    if status_filter:
+        where += " AND orders.order_status = %s"
+        params.append(status_filter)
+
+    if days == '7':
+        where += " AND orders.order_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)"
+    elif days == '30':
+        where += " AND orders.order_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)"
+    elif days == '365':
+        where += " AND orders.order_date >= DATE_SUB(CURDATE(), INTERVAL 1 YEAR)"
+
+    count_sql = f"SELECT COUNT(*) AS c {base_from}{where}"
+    data_sql = f"SELECT {select_cols} {base_from}{where} ORDER BY orders.order_date DESC"
+
+    rows, page, total_pages, total_count = paginate(
+        cursor, count_sql, data_sql, tuple(params), page
     )
-
-    VALUES(%s,%s,%s,%s,%s,%s)
-    """
-
-    values = (
-        name,
-        category,
-        weaver,
-        price,
-        stock,
-        description
-    )
-
-    cursor.execute(query, values)
-
-    db.commit()
-
-
-    # GET LAST INSERTED ID
-
-    product_id = cursor.lastrowid
-
-    # GENERATE PRODUCT CODE
-
-    product_code = f"P-{1000 + product_id}"
-
-    # UPDATE PRODUCT CODE
-
-    update_query = """
-    UPDATE products
-    SET product_code=%s
-    WHERE product_id=%s
-    """
 
     cursor.execute(
-        update_query,
-        (product_code, product_id)
+        """
+        SELECT order_status, COUNT(*) AS count FROM orders
+        GROUP BY order_status
+        """
+    )
+    status_counts = {r['order_status']: r['count'] for r in cursor.fetchall()}
+
+    return render_template(
+        'orders.html',
+        orders=rows,
+        status_counts=status_counts,
+        filter_status=status_filter,
+        filter_days=days,
+        pagination=pagination_context(
+            page, total_pages, total_count, '/orders',
+            {'status': status_filter, 'days': days},
+        ),
+        **nav_context(),
     )
 
-    db.commit()
-    flash('Product added successfully!', 'success')
-    return redirect('/products')
+
+@app.route('/place_order', methods=['POST'])
+@role_required(['Buyer'])
+def place_order():
+    user_id = session['user_id']
+    product_id = request.form['product_id']
+    quantity = int(request.form.get('quantity', 1))
+    if quantity < 1:
+        flash('Invalid quantity.', 'danger')
+        return redirect('/products')
+
+    try:
+        db.start_transaction()
+        cursor.execute("SELECT * FROM products WHERE product_id=%s FOR UPDATE", (product_id,))
+        product = cursor.fetchone()
+
+        if not product or product['stock'] < quantity:
+            db.rollback()
+            flash('Not enough stock available.', 'danger')
+            return redirect('/products')
+
+        total_price = product['price'] * quantity
+        new_stock = product['stock'] - quantity
+
+        cursor.execute(
+            "UPDATE products SET stock=%s WHERE product_id=%s",
+            (new_stock, product_id),
+        )
+        cursor.execute(
+            """
+            INSERT INTO orders (user_id, product_id, quantity, total_price)
+            VALUES (%s,%s,%s,%s)
+            """,
+            (user_id, product_id, quantity, total_price),
+        )
+        order_id = cursor.lastrowid
+        db.commit()
+
+        product['stock'] = new_stock
+        notify_low_stock(cursor, db, product)
+        log_activity(cursor, db, user_id, 'PLACE_ORDER', 'orders', order_id,
+                     f"qty={quantity}")
+        flash('Order placed successfully!', 'success')
+    except Exception as e:
+        db.rollback()
+        flash(f'Order failed: {e}', 'danger')
+    return redirect('/orders')
+
+
+@app.route('/cancel_order/<int:order_id>', methods=['POST'])
+@role_required(['Buyer', 'Admin'])
+def cancel_order(order_id):
+    try:
+        db.start_transaction()
+        cursor.execute("SELECT * FROM orders WHERE order_id=%s FOR UPDATE", (order_id,))
+        order = cursor.fetchone()
+
+        if not order:
+            db.rollback()
+            flash('Order not found.', 'danger')
+            return redirect('/orders')
+
+        if session['role'] == 'Buyer' and order['user_id'] != session['user_id']:
+            db.rollback()
+            return "Access Denied"
+
+        current = order['order_status'] or 'Pending'
+        if current == 'Cancelled':
+            db.rollback()
+            flash('Order already cancelled.', 'info')
+            return redirect('/orders')
+
+        if current != 'Pending':
+            db.rollback()
+            flash('Only pending orders can be cancelled.', 'warning')
+            return redirect('/orders')
+
+        cursor.execute(
+            "SELECT stock FROM products WHERE product_id=%s FOR UPDATE",
+            (order['product_id'],),
+        )
+        product = cursor.fetchone()
+        new_stock = product['stock'] + order['quantity']
+        cursor.execute(
+            "UPDATE products SET stock=%s WHERE product_id=%s",
+            (new_stock, order['product_id']),
+        )
+        cursor.execute(
+            "UPDATE orders SET order_status='Cancelled' WHERE order_id=%s",
+            (order_id,),
+        )
+        db.commit()
+        log_activity(cursor, db, session['user_id'], 'CANCEL_ORDER', 'orders', order_id)
+        flash('Order cancelled and stock restored.', 'success')
+    except Exception as e:
+        db.rollback()
+        flash(f'Cancel failed: {e}', 'danger')
+    return redirect('/orders')
+
+
+@app.route('/update_order_status', methods=['POST'])
+@role_required(['Weaver', 'Admin'])
+def update_order_status():
+    order_id = request.form['order_id']
+    status = request.form['status']
+    old_status = None
+
+    try:
+        db.start_transaction()
+        cursor.execute("SELECT * FROM orders WHERE order_id=%s FOR UPDATE", (order_id,))
+        order = cursor.fetchone()
+        if not order:
+            db.rollback()
+            return redirect('/orders')
+
+        old_status = order['order_status']
+
+        if status == 'Cancelled' and old_status != 'Cancelled':
+            cursor.execute(
+                "SELECT stock FROM products WHERE product_id=%s FOR UPDATE",
+                (order['product_id'],),
+            )
+            product = cursor.fetchone()
+            cursor.execute(
+                "UPDATE products SET stock=%s WHERE product_id=%s",
+                (product['stock'] + order['quantity'], order['product_id']),
+            )
+
+        cursor.execute(
+            "UPDATE orders SET order_status=%s WHERE order_id=%s",
+            (status, order_id),
+        )
+        db.commit()
+        log_activity(cursor, db, session['user_id'], 'UPDATE_ORDER_STATUS', 'orders',
+                     order_id, f"{old_status}->{status}")
+    except Exception as e:
+        db.rollback()
+        flash(f'Update failed: {e}', 'danger')
+    return redirect('/orders')
+
+
+# ─── AUTH ───────────────────────────────────────────────────────────────────
+
+@app.route('/login')
+def login_page():
+    return render_template('login.html', **nav_context())
 
 
 @app.route('/register', methods=['POST'])
 def register():
-
     full_name = request.form['name']
-
     email = request.form['email']
-
     phone = request.form['phone']
-
-    password = request.form['password']
-
+    password = hash_password(request.form['password'])
     location = request.form['location']
-
     role = request.form['role']
 
-    # CHECK IF EMAIL EXISTS
-
-    check_query = """
-    SELECT * FROM users
-    WHERE email=%s
-    """
-
-    cursor.execute(check_query, (email,))
-
-    existing_user = cursor.fetchone()
-
-    if existing_user:
-
+    cursor.execute("SELECT * FROM users WHERE email=%s", (email,))
+    if cursor.fetchone():
         flash('Email already registered!', 'danger')
-
         return redirect('/login')
 
-    # INSERT USER
-
-    insert_query = """
-    INSERT INTO users
-    (
-        full_name,
-        email,
-        phone,
-        password,
-        role,
-        location
+    cursor.execute(
+        """
+        INSERT INTO users (full_name, email, phone, password, role, location)
+        VALUES (%s,%s,%s,%s,%s,%s)
+        """,
+        (full_name, email, phone, password, role, location),
     )
-
-    VALUES(%s,%s,%s,%s,%s,%s)
-    """
-
-    values = (
-        full_name,
-        email,
-        phone,
-        password,
-        role,
-        location
-    )
-
-    cursor.execute(insert_query, values)
-
     db.commit()
-
+    log_activity(cursor, db, cursor.lastrowid, 'REGISTER', 'users', cursor.lastrowid)
+    flash('Registration successful. Please login.', 'success')
     return redirect('/login')
+
+
 @app.route('/login', methods=['POST'])
 def login():
-
     email = request.form['email']
-
     password = request.form['password']
-
     role = request.form['role']
 
-    query = """
-    SELECT * FROM users
-    WHERE email=%s
-    AND password=%s
-    AND role=%s
-    """
-
-    values = (
-        email,
-        password,
-        role
+    cursor.execute(
+        "SELECT * FROM users WHERE email=%s AND role=%s",
+        (email, role),
     )
-
-    cursor.execute(query, values)
-
     user = cursor.fetchone()
 
-    if user:
-
+    if user and verify_password(user['password'], password):
+        if needs_rehash(user['password']):
+            cursor.execute(
+                "UPDATE users SET password=%s WHERE user_id=%s",
+                (hash_password(password), user['user_id']),
+            )
+            db.commit()
         session['user_id'] = user['user_id']
-
         session['user_name'] = user['full_name']
-
         session['role'] = user['role']
-
+        log_activity(cursor, db, user['user_id'], 'LOGIN', 'users', user['user_id'])
         return redirect('/dashboard')
 
     flash('Invalid email or password!', 'danger')
     return redirect('/login')
 
-@app.route('/place_order', methods=['POST'])
-@role_required(['Buyer'])
-def place_order():
 
-    # SESSION SECURITY
-    if 'user_id' not in session:
-
-        return redirect('/login')
-    if session['role'] not in ['Buyer', 'Admin']:
-        return redirect('/dashboard')
-
-    user_id = session['user_id']
-
-    product_id = request.form['product_id']
-
-    # GET PRODUCT DETAILS
-    query = """
-    SELECT * FROM products
-    WHERE product_id=%s
-    """
-
-    cursor.execute(query, (product_id,))
-
-    product = cursor.fetchone()
-
-    # OUT OF STOCK CHECK
-
-    if product['stock'] <= 0:
-
-       flash('Product is out of stock!', 'danger')
-
-       return redirect('/products')
-    # DEFAULT ORDER VALUES
-    quantity = 1
-
-    total_price = product['price'] * quantity
-
-    # REDUCE STOCK
-    new_stock = product['stock'] - 1
-
-    update_query = """
-    UPDATE products
-    SET stock=%s
-    WHERE product_id=%s
-    """
-
-    cursor.execute(
-        update_query,
-        (new_stock, product_id)
-    )
-
-    # INSERT ORDER
-    insert_query = """
-    INSERT INTO orders
-    (
-        user_id,
-        product_id,
-        quantity,
-        total_price
-    )
-
-    VALUES(%s,%s,%s,%s)
-    """
-
-    values = (
-        user_id,
-        product_id,
-        quantity,
-        total_price
-    )
-
-    cursor.execute(insert_query, values)
-
-    db.commit()
-    flash('Order placed successfully!', 'success')
-    return redirect('/orders')
-
-@app.route('/update_order_status', methods=['POST'])
-
-@role_required(['Weaver', 'Admin'])
-
-def update_order_status():
-
-    if session['role'] not in ['Weaver', 'Admin']:
-        return redirect('/dashboard')
-    order_id = request.form['order_id']
-
-    status = request.form['status']
-
-    query = """
-    UPDATE orders
-    SET order_status=%s
-    WHERE order_id=%s
-    """
-
-    cursor.execute(
-        query,
-        (status, order_id)
-    )
-
-    db.commit()
-
-    return redirect('/orders')
+# ─── MATERIALS ──────────────────────────────────────────────────────────────
 
 @app.route('/materials')
+@role_required(['Supplier', 'Admin'])
 def materials():
-
-    if 'user_id' not in session:
-        return redirect('/login')
-
-    if session['role'] not in ['Supplier', 'Admin']:
-        return redirect('/dashboard')
-
     supplier_id = session['user_id']
+    page = request.args.get('page', 1, type=int)
+    mtype = request.args.get('type', '').strip()
 
-    query = """
-    SELECT * FROM materials
-    WHERE supplier_id=%s
-    """
+    where = " WHERE supplier_id = %s"
+    params = [supplier_id]
+    if mtype:
+        where += " AND material_type = %s"
+        params.append(mtype)
 
-    cursor.execute(query, (supplier_id,))
+    count_sql = f"SELECT COUNT(*) AS c FROM materials{where}"
+    data_sql = f"SELECT * FROM materials{where} ORDER BY material_id DESC"
 
-    materials = cursor.fetchall()
+    rows, page, total_pages, total_count = paginate(
+        cursor, count_sql, data_sql, tuple(params), page
+    )
 
     return render_template(
         'materials.html',
-        materials=materials
+        materials=rows,
+        filter_type=mtype,
+        pagination=pagination_context(page, total_pages, total_count, '/materials', {'type': mtype}),
+        **nav_context(),
     )
+
 
 @app.route('/add_material', methods=['POST'])
+@role_required(['Supplier'])
 def add_material():
-
-    if session['role'] != 'Supplier':
-        return redirect('/dashboard')
-
-    supplier_id = session['user_id']
-
-    material_name = request.form['material_name']
-
-    material_type = request.form['material_type']
-
-    stock = request.form['stock']
-
-    price = request.form['price']
-
-    query = """
-    INSERT INTO materials
-    (
-        supplier_id,
-        material_name,
-        material_type,
-        stock,
-        price
+    cursor.execute(
+        """
+        INSERT INTO materials (supplier_id, material_name, material_type, stock, price)
+        VALUES (%s,%s,%s,%s,%s)
+        """,
+        (
+            session['user_id'],
+            request.form['material_name'],
+            request.form['material_type'],
+            request.form['stock'],
+            request.form['price'],
+        ),
     )
-
-    VALUES(%s,%s,%s,%s,%s)
-    """
-
-    values = (
-        supplier_id,
-        material_name,
-        material_type,
-        stock,
-        price
-    )
-
-    cursor.execute(query, values)
-
     db.commit()
-
+    log_activity(cursor, db, session['user_id'], 'ADD_MATERIAL', 'materials', cursor.lastrowid)
     return redirect('/materials')
+
 
 @app.route('/delete_material/<int:id>')
+@role_required(['Supplier'])
 def delete_material(id):
-
-    if session['role'] != 'Supplier':
-        return redirect('/dashboard')
-
-    query = """
-    DELETE FROM materials
-    WHERE material_id=%s
-    """
-
-    cursor.execute(query, (id,))
-
+    cursor.execute("DELETE FROM materials WHERE material_id=%s", (id,))
     db.commit()
-
+    log_activity(cursor, db, session['user_id'], 'DELETE_MATERIAL', 'materials', id)
     return redirect('/materials')
 
+
 @app.route('/material_requests')
+@role_required(['Weaver', 'Admin'])
 def material_requests():
-
-    if 'user_id' not in session:
-        return redirect('/login')
-
-    if session['role'] not in ['Weaver', 'Admin']:
-        return redirect('/dashboard')
-
-    query = """
-    SELECT * FROM materials
-    """
-
-    cursor.execute(query)
-
+    cursor.execute(
+        """
+        SELECT m.*, u.full_name AS supplier_name
+        FROM materials m
+        JOIN users u ON m.supplier_id = u.user_id
+        ORDER BY m.material_name
+        """
+    )
     materials = cursor.fetchall()
+
+    my_requests = []
+    try:
+        cursor.execute(
+            """
+            SELECT mr.*, m.material_name, m.material_type, u.full_name AS supplier_name
+            FROM material_requests mr
+            JOIN materials m ON mr.material_id = m.material_id
+            JOIN users u ON mr.supplier_id = u.user_id
+            WHERE mr.weaver_id = %s
+            ORDER BY mr.request_id DESC
+            """,
+            (session['user_id'],),
+        )
+        my_requests = cursor.fetchall()
+    except Exception:
+        pass
 
     return render_template(
         'material_requests.html',
-        materials=materials
+        materials=materials,
+        my_requests=my_requests,
+        **nav_context(),
     )
+
 
 @app.route('/request_material', methods=['POST'])
+@role_required(['Weaver'])
 def request_material():
-
-    if session['role'] != 'Weaver':
-        return redirect('/dashboard')
-    if session['role'] not in ['Weaver', 'Admin']:
-        return redirect('/dashboard')
-    weaver_id = session['user_id']
-
-    supplier_id = request.form['supplier_id']
-
-    material_id = request.form['material_id']
-
-    quantity = request.form['quantity']
-
-    query = """
-    INSERT INTO material_requests
-    (
-        weaver_id,
-        supplier_id,
-        material_id,
-        quantity
+    cursor.execute(
+        """
+        INSERT INTO material_requests (weaver_id, supplier_id, material_id, quantity)
+        VALUES (%s,%s,%s,%s)
+        """,
+        (
+            session['user_id'],
+            request.form['supplier_id'],
+            request.form['material_id'],
+            request.form['quantity'],
+        ),
     )
-
-    VALUES(%s,%s,%s,%s)
-    """
-
-    values = (
-        weaver_id,
-        supplier_id,
-        material_id,
-        quantity
-    )
-
-    cursor.execute(query, values)
-
     db.commit()
+    log_activity(cursor, db, session['user_id'], 'REQUEST_MATERIAL',
+                 'material_requests', cursor.lastrowid)
     flash('Material request submitted successfully!', 'success')
-
     return redirect('/material_requests')
 
+
 @app.route('/supplier_requests')
+@role_required(['Supplier', 'Admin'])
 def supplier_requests():
-
-    if 'user_id' not in session:
-        return redirect('/login')
-
-    if session['role'] not in ['Supplier', 'Admin']:
-        return redirect('/dashboard')
-
     supplier_id = session['user_id']
+    cursor.execute(
+        """
+        SELECT material_requests.*, materials.material_name
+        FROM material_requests
+        JOIN materials ON material_requests.material_id = materials.material_id
+        WHERE material_requests.supplier_id = %s
+        ORDER BY material_requests.request_id DESC
+        """,
+        (supplier_id,),
+    )
+    requests_list = cursor.fetchall()
 
-    query = """
-    SELECT
-        material_requests.*,
-        materials.material_name
-
-    FROM material_requests
-
-    JOIN materials
-    ON material_requests.material_id =
-    materials.material_id
-
-    WHERE material_requests.supplier_id=%s
-    """
-
-    cursor.execute(query, (supplier_id,))
-
-    requests = cursor.fetchall()
+    cursor.execute(
+        """
+        SELECT supplier_id, AVG(rating) AS avg_rating, COUNT(*) AS rating_count
+        FROM supplier_ratings
+        WHERE supplier_id = %s
+        GROUP BY supplier_id
+        """,
+        (supplier_id,),
+    )
+    rating_summary = cursor.fetchone()
 
     return render_template(
         'supplier_requests.html',
-        requests=requests
+        requests=requests_list,
+        rating_summary=rating_summary,
+        **nav_context(),
     )
 
+
 @app.route('/update_material_status/<int:request_id>/<status>', methods=['GET', 'POST'])
+@role_required(['Supplier', 'Admin'])
 def update_material_status(request_id, status):
-    print("REQUEST METHOD:", request.method)
     if session['role'] not in ['Supplier', 'Admin']:
-        return jsonify({
-            "success": False,
-            "message": "Unauthorized"
-        })
+        return jsonify({"success": False, "message": "Unauthorized"})
 
-    # GET REQUEST DATA
-    query = """
-    SELECT * FROM material_requests
-    WHERE request_id=%s
-    """
+    try:
+        db.start_transaction()
+        cursor.execute(
+            "SELECT * FROM material_requests WHERE request_id=%s FOR UPDATE",
+            (request_id,),
+        )
+        request_data = cursor.fetchone()
 
-    cursor.execute(query, (request_id,))
-    request_data = cursor.fetchone()
+        if not request_data:
+            db.rollback()
+            return jsonify({"success": False, "message": "Request not found"})
 
-    if not request_data:
-        return jsonify({
-            "success": False,
-            "message": "Request not found"
-        })
+        if request_data['request_status'] == 'Delivered':
+            db.rollback()
+            return jsonify({"success": False, "message": "Already delivered"})
 
-    # PREVENT DOUBLE DELIVERY
-    if request_data['request_status'] == 'Delivered':
-        return jsonify({
-            "success": False,
-            "message": "Already delivered"
-        })
+        if status == 'Delivered':
+            material_id = request_data['material_id']
+            quantity = request_data['quantity']
+            cursor.execute(
+                "SELECT * FROM materials WHERE material_id=%s FOR UPDATE",
+                (material_id,),
+            )
+            material = cursor.fetchone()
+            if material['stock'] < quantity:
+                db.rollback()
+                return jsonify({"success": False, "message": "Not enough stock available"})
+            cursor.execute(
+                "UPDATE materials SET stock=%s WHERE material_id=%s",
+                (material['stock'] - quantity, material_id),
+            )
 
-    # UPDATE STATUS
-    update_query = """
-    UPDATE material_requests
-    SET request_status=%s
-    WHERE request_id=%s
-    """
+        cursor.execute(
+            "UPDATE material_requests SET request_status=%s WHERE request_id=%s",
+            (status, request_id),
+        )
+        db.commit()
+        log_activity(cursor, db, session['user_id'], 'MATERIAL_STATUS',
+                     'material_requests', request_id, status)
+        return jsonify({"success": True, "message": f"Request {status} successfully"})
+    except Exception as e:
+        db.rollback()
+        return jsonify({"success": False, "message": str(e)})
 
-    cursor.execute(update_query, (status, request_id))
 
-    # REDUCE STOCK ONLY WHEN DELIVERED
-    # REDUCE STOCK ONLY WHEN DELIVERED
-    
-    if status == 'Delivered':
+@app.route('/rate_supplier', methods=['POST'])
+@role_required(['Weaver', 'Buyer', 'Admin'])
+def rate_supplier():
+    supplier_id = request.form['supplier_id']
+    rating = int(request.form['rating'])
+    comment = request.form.get('comment', '')
+    request_id = request.form.get('material_request_id') or None
 
-        material_id = request_data['material_id']
-        quantity = request_data['quantity']
+    if rating < 1 or rating > 5:
+        flash('Rating must be between 1 and 5.', 'danger')
+        return redirect(request.referrer or '/material_requests')
 
-        material_query = """
-        SELECT * FROM materials
-        WHERE material_id=%s
+    try:
+        cursor.execute(
+            """
+            INSERT INTO supplier_ratings
+            (supplier_id, rated_by, material_request_id, rating, comment)
+            VALUES (%s,%s,%s,%s,%s)
+            """,
+            (supplier_id, session['user_id'], request_id, rating, comment),
+        )
+        db.commit()
+        log_activity(cursor, db, session['user_id'], 'RATE_SUPPLIER',
+                     'supplier_ratings', cursor.lastrowid)
+        flash('Thank you for your rating!', 'success')
+    except Exception as e:
+        flash(f'Rating failed. Run database upgrade script. ({e})', 'danger')
+    return redirect(request.referrer or '/material_requests')
+
+
+# ─── ADMIN & REPORTS ────────────────────────────────────────────────────────
+
+@app.route('/reports')
+@role_required(['Admin'])
+def reports():
+    cursor.execute(
         """
-
-        cursor.execute(material_query, (material_id,))
-        material = cursor.fetchone()
-
-        # CHECK STOCK
-        if material['stock'] < quantity:
-
-            return jsonify({
-                "success": False,
-                "message": "Not enough stock available"
-            })
-
-        # REDUCE STOCK
-        new_stock = material['stock'] - quantity
-
-        stock_query = """
-        UPDATE materials
-        SET stock=%s
-        WHERE material_id=%s
+        SELECT DATE_FORMAT(order_date, '%%Y-%%m') AS month,
+               SUM(total_price) AS revenue,
+               COUNT(*) AS order_count
+        FROM orders
+        GROUP BY DATE_FORMAT(order_date, '%%Y-%%m')
+        ORDER BY month DESC
+        LIMIT 12
         """
+    )
+    monthly_revenue = cursor.fetchall()
 
-        cursor.execute(stock_query, (new_stock, material_id))
+    cursor.execute(
+        """
+        SELECT order_status, COUNT(*) AS count,
+               SUM(total_price) AS total
+        FROM orders
+        GROUP BY order_status
+        """
+    )
+    orders_by_status = cursor.fetchall()
 
-    db.commit()
+    cursor.execute(
+        """
+        SELECT p.product_name, p.product_code,
+               SUM(o.quantity) AS units_sold,
+               SUM(o.total_price) AS revenue
+        FROM orders o
+        JOIN products p ON o.product_id = p.product_id
+        WHERE o.order_status != 'Cancelled'
+        GROUP BY p.product_id
+        ORDER BY revenue DESC
+        LIMIT 10
+        """
+    )
+    top_products = cursor.fetchall()
 
-    return jsonify({
-        "success": True,
-        "message": f"Request {status} successfully"
-    })
+    try:
+        cursor.execute(
+            """
+            SELECT u.full_name, AVG(sr.rating) AS avg_rating, COUNT(*) AS ratings
+            FROM supplier_ratings sr
+            JOIN users u ON sr.supplier_id = u.user_id
+            GROUP BY sr.supplier_id
+            ORDER BY avg_rating DESC
+            """
+        )
+        supplier_ratings_report = cursor.fetchall()
+    except Exception:
+        supplier_ratings_report = []
+
+    try:
+        cursor.execute(
+            """
+            SELECT al.*, u.full_name
+            FROM activity_log al
+            LEFT JOIN users u ON al.user_id = u.user_id
+            ORDER BY al.created_at DESC
+            LIMIT 50
+            """
+        )
+        audit_log = cursor.fetchall()
+    except Exception:
+        audit_log = []
+
+    return render_template(
+        'reports.html',
+        monthly_revenue=monthly_revenue,
+        orders_by_status=orders_by_status,
+        top_products=top_products,
+        supplier_ratings_report=supplier_ratings_report,
+        audit_log=audit_log,
+        **nav_context(),
+    )
 
 
 @app.route('/admin')
+@role_required(['Admin'])
 def admin():
+    page = request.args.get('page', 1, type=int)
 
-    # LOGIN CHECK
-
-    if 'user_id' not in session:
-
-        return redirect('/login')
-
-    # ROLE CHECK
-
-    if session['role'] != 'Admin':
-
-        return redirect('/dashboard')
-
-    # TOTAL USERS
-
-    cursor.execute(
-        "SELECT COUNT(*) AS total FROM users"
-    )
-
+    cursor.execute("SELECT COUNT(*) AS total FROM users")
     total_users = cursor.fetchone()['total']
-
-    # TOTAL PRODUCTS
-
-    cursor.execute(
-        "SELECT COUNT(*) AS total FROM products"
-    )
-
+    cursor.execute("SELECT COUNT(*) AS total FROM products")
     total_products = cursor.fetchone()['total']
-
-    # TOTAL ORDERS
-
-    cursor.execute(
-        "SELECT COUNT(*) AS total FROM orders"
-    )
-
+    cursor.execute("SELECT COUNT(*) AS total FROM orders")
     total_orders = cursor.fetchone()['total']
+    cursor.execute("SELECT SUM(total_price) AS revenue FROM orders")
+    revenue = cursor.fetchone()['revenue'] or 0
 
-    # TOTAL REVENUE
-
-    cursor.execute(
-        """
-        SELECT SUM(total_price) AS revenue
-        FROM orders
-        """
+    users, up, utp, uc = paginate(
+        cursor,
+        "SELECT COUNT(*) AS c FROM users",
+        "SELECT * FROM users ORDER BY user_id DESC",
+        (),
+        page,
     )
 
-    revenue = cursor.fetchone()['revenue']
-
-    if revenue is None:
-        revenue = 0
-
-    # USERS
-
-    cursor.execute(
-        "SELECT * FROM users"
-    )
-
-    users = cursor.fetchall()
-
-    # PRODUCTS
-
-    cursor.execute(
-        "SELECT * FROM products"
-    )
-
+    cursor.execute("SELECT * FROM products ORDER BY product_id DESC LIMIT 20")
     products = cursor.fetchall()
 
-    # ORDERS
-
-    query = """
-    SELECT
-        orders.*,
-        products.product_name
-
-    FROM orders
-
-    JOIN products
-    ON orders.product_id =
-    products.product_id
-
-    ORDER BY orders.order_id DESC
-    """
-
-    cursor.execute(query)
-
+    cursor.execute(
+        """
+        SELECT orders.*, products.product_name
+        FROM orders
+        JOIN products ON orders.product_id = products.product_id
+        ORDER BY orders.order_id DESC
+        LIMIT 20
+        """
+    )
     orders = cursor.fetchall()
 
     return render_template(
         'admin.html',
-
         total_users=total_users,
-
         total_products=total_products,
-
         total_orders=total_orders,
-
         total_revenue=revenue,
-
         users=users,
-
         products=products,
-
-        orders=orders
+        orders=orders,
+        pagination=pagination_context(up, utp, uc, '/admin', {}),
+        **nav_context(),
     )
 
+
 @app.route('/delete_user/<int:id>')
+@role_required(['Admin'])
 def delete_user(id):
-
-    if session['role'] != 'Admin':
-        return redirect('/dashboard')
-
-    query = """
-    DELETE FROM users
-    WHERE user_id=%s
-    """
-
-    cursor.execute(query, (id,))
-
+    cursor.execute("DELETE FROM users WHERE user_id=%s", (id,))
     db.commit()
-
+    log_activity(cursor, db, session['user_id'], 'DELETE_USER', 'users', id)
     return redirect('/admin')
+
 
 @app.route('/admin_delete_product/<int:id>')
-def admin_delete_product(id):
-
-    if session['role'] != 'Admin':
-        return redirect('/dashboard')
-
-    query = """
-    DELETE FROM products
-    WHERE product_id=%s
-    """
-
-    cursor.execute(query, (id,))
-
+@role_required(['Admin'])
+def delete_product_admin(id):
+    cursor.execute("DELETE FROM products WHERE product_id=%s", (id,))
     db.commit()
+    log_activity(cursor, db, session['user_id'], 'DELETE_PRODUCT', 'products', id)
+    return redirect(url_for('admin'))
 
-    return redirect('/admin')
 
-# @app.route('/logout')
-# def logout():
+@app.route('/testdb')
+def testdb():
+    cursor.execute("SHOW TABLES")
+    return str(cursor.fetchall())
 
-#     session.clear()
 
-#     return redirect('/login')
 @app.route('/logout')
 def logout():
-
+    if 'user_id' in session:
+        log_activity(cursor, db, session['user_id'], 'LOGOUT', 'users', session['user_id'])
     session.clear()
-
     response = redirect('/login')
-
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-
     return response
-# OPTIONAL REDIRECTS FOR OLD .html LINKS
 
+
+# Legacy redirects
 @app.route('/index.html')
 def old_index():
     return redirect(url_for('home'))
@@ -971,49 +1016,8 @@ def old_orders():
 
 @app.route('/login.html')
 def old_login():
-    return redirect(url_for('login'))
+    return redirect(url_for('login_page'))
 
 
 if __name__ == '__main__':
     app.run(debug=True)
-
-
-# from flask import Flask, render_template, redirect, url_for
-
-# app = Flask(__name__)
-
-# # Pages
-# @app.route('/')
-# def home():
-#     return render_template('index.html')
-
-# @app.route('/dashboard')
-# def dashboard():
-#     return render_template('dashboard.html')
-
-# @app.route('/products')
-# def products():
-#     return render_template('products.html')
-
-# @app.route('/orders')
-# def orders():
-#     return render_template('orders.html')
-
-# @app.route('/login')
-# def login():
-#     return render_template('login.html')
-
-# # Redirects for old .html links
-# redirects = {
-#     "/index.html": "home",
-#     "/dashboard.html": "dashboard",
-#     "/products.html": "products",
-#     "/orders.html": "orders",
-#     "/login.html": "login"
-# }
-
-# for old, new in redirects.items():
-#     app.add_url_rule(old, f"redirect_{new}", lambda new=new: redirect(url_for(new)))
-
-# if __name__ == "__main__":
-#     app.run(debug=True)

@@ -133,55 +133,36 @@
 
     <!-- STATS -->
     <div class="row g-3 mb-4">
+      {% for label, key in [('Pending','Pending'),('Processing','Processing'),('Delivered','Delivered'),('Cancelled','Cancelled')] %}
       <div class="col-6 col-md-3">
         <div class="sl-card p-3">
-          <div class="text-muted-sl small">Total Orders</div>
-          <div style="font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:600;">342</div>
+          <div class="text-muted-sl small">{{ label }}</div>
+          <div style="font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:600;">{{ status_counts.get(key, 0) }}</div>
         </div>
       </div>
-      <div class="col-6 col-md-3">
-        <div class="sl-card p-3">
-          <div class="text-muted-sl small">Processing</div>
-          <div style="font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:600;color:var(--accent);">28
-          </div>
-        </div>
-      </div>
-      <div class="col-6 col-md-3">
-        <div class="sl-card p-3">
-          <div class="text-muted-sl small">In Transit</div>
-          <div style="font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:600;color:#8a6a26;">46</div>
-        </div>
-      </div>
-      <div class="col-6 col-md-3">
-        <div class="sl-card p-3">
-          <div class="text-muted-sl small">Delivered</div>
-          <div style="font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:600;color:var(--success);">268
-          </div>
-        </div>
-      </div>
+      {% endfor %}
     </div>
 
-    <!-- TOOLBAR -->
-    <div class="row g-3 mb-4">
+    <form method="GET" class="row g-3 mb-4">
       <div class="col-md-6"><input type="search" class="sl-input" placeholder="Search by order ID, buyer..."
           data-sl-search="#ordersTable" /></div>
       <div class="col-md-3">
-        <select class="sl-input">
-          <option>All Status</option>
-          <option>Processing</option>
-          <option>In Transit</option>
-          <option>Delivered</option>
-          <option>Cancelled</option>
+        <select class="sl-input" name="status" onchange="this.form.submit()">
+          <option value="">All Status</option>
+          {% for s in ['Pending','Processing','Shipped','Delivered','Cancelled'] %}
+          <option value="{{ s }}" {% if filter_status == s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
         </select>
       </div>
       <div class="col-md-3">
-        <select class="sl-input">
-          <option>Last 30 days</option>
-          <option>Last 7 days</option>
-          <option>This year</option>
+        <select class="sl-input" name="days" onchange="this.form.submit()">
+          <option value="">All time</option>
+          <option value="7" {% if filter_days == '7' %}selected{% endif %}>Last 7 days</option>
+          <option value="30" {% if filter_days == '30' %}selected{% endif %}>Last 30 days</option>
+          <option value="365" {% if filter_days == '365' %}selected{% endif %}>This year</option>
         </select>
       </div>
-    </div>
+    </form>
 
     <div class="sl-card">
       <div class="table-responsive">
@@ -191,6 +172,7 @@
               <th>Order ID</th>
               <th>Buyer</th>
               <th>Product</th>
+              <th>Qty</th>
               <th>Date</th>
               <th>Status</th>
               <th class="text-end">Amount</th>
@@ -294,7 +276,7 @@
               </td>
 
               <td>{{ order.product_name }}</td>
-
+              <td>{{ order.quantity }}</td>
               <td>{{ order.order_date }}</td>
 
               <td>
@@ -361,14 +343,10 @@
 
                 </form>
 
-                {% else %}
-
-                <button class="btn btn-sm btn-outline-sl">
-
-                  <i class="bi bi-eye"></i>
-
-                </button>
-
+                {% elif session['role'] == 'Buyer' and (order.order_status == 'Pending' or not order.order_status) %}
+                <form method="POST" action="/cancel_order/{{ order.order_id }}" style="display:inline;" onsubmit="return confirm('Cancel this order?');">
+                  <button type="submit" class="btn btn-sm btn-outline-sl text-danger">Cancel</button>
+                </form>
                 {% endif %}
 
               </td>
@@ -380,6 +358,7 @@
           </tbody>
         </table>
       </div>
+      {% include 'partials/pagination.html' %}
     </div>
   </section>
 
