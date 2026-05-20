@@ -256,7 +256,7 @@ def add_product():
         weaver_name = request.form['weaver']
 
     try:
-        # product_code is set by trg_products_after_insert
+        # product_code: trg_products_before_insert sets it; Python fallback uses real product_id
         cursor.execute(
             """
             INSERT INTO products
@@ -266,6 +266,17 @@ def add_product():
             (name, category, weaver_name, weaver_id, price, stock, description),
         )
         product_id = cursor.lastrowid
+        cursor.execute(
+            "SELECT product_code FROM products WHERE product_id=%s",
+            (product_id,),
+        )
+        row = cursor.fetchone()
+        if not row or not row.get('product_code'):
+            product_code = f"P-{1000 + product_id}"
+            cursor.execute(
+                "UPDATE products SET product_code=%s WHERE product_id=%s",
+                (product_code, product_id),
+            )
         db.commit()
         log_activity(cursor, db, session['user_id'], 'ADD_PRODUCT', 'products', product_id)
         flash('Product added successfully!', 'success')
@@ -282,6 +293,11 @@ def add_product():
                     (name, category, weaver_name, price, stock, description),
                 )
                 product_id = cursor.lastrowid
+                product_code = f"P-{1000 + product_id}"
+                cursor.execute(
+                    "UPDATE products SET product_code=%s WHERE product_id=%s",
+                    (product_code, product_id),
+                )
                 db.commit()
                 flash('Product added successfully!', 'success')
                 return redirect('/products')

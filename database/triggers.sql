@@ -6,6 +6,7 @@
 USE smartloom;
 
 DROP TRIGGER IF EXISTS trg_products_after_insert;
+DROP TRIGGER IF EXISTS trg_products_before_insert;
 DROP TRIGGER IF EXISTS trg_products_before_update;
 DROP TRIGGER IF EXISTS trg_materials_before_update;
 DROP TRIGGER IF EXISTS trg_orders_before_insert;
@@ -16,14 +17,16 @@ DROP TRIGGER IF EXISTS trg_material_requests_after_update;
 
 DELIMITER $$
 
--- 1. Auto-generate product code after new product is added
-CREATE TRIGGER trg_products_after_insert
-AFTER INSERT ON products
+-- 1. Auto-generate product code BEFORE insert (cannot UPDATE same table in AFTER INSERT)
+CREATE TRIGGER trg_products_before_insert
+BEFORE INSERT ON products
 FOR EACH ROW
 BEGIN
-    UPDATE products
-    SET product_code = CONCAT('P-', 1000 + product_id)
-    WHERE product_id = NEW.product_id;
+    DECLARE next_id INT;
+    IF NEW.product_code IS NULL OR NEW.product_code = '' THEN
+        SELECT IFNULL(MAX(product_id), 0) + 1 INTO next_id FROM products;
+        SET NEW.product_code = CONCAT('P-', 1000 + next_id);
+    END IF;
 END$$
 
 -- 2. Prevent negative product stock on manual edits

@@ -48,7 +48,7 @@ Then run **`triggers.sql`** (required for the app to work correctly).
 
 | Trigger | When | What it does |
 |---------|------|----------------|
-| `trg_products_after_insert` | After new product | Auto-sets `product_code` (e.g. P-1005) |
+| `trg_products_before_insert` | Before new product | Auto-sets `product_code` (e.g. P-1005) |
 | `trg_products_before_update` | Before product edit | Blocks negative stock |
 | `trg_materials_before_update` | Before material edit | Blocks negative stock |
 | `trg_orders_before_insert` | Before new order | Validates stock, sets `total_price` |
