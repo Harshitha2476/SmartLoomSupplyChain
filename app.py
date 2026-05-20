@@ -23,6 +23,15 @@ db = mysql.connector.connect(
 cursor = db.cursor(dictionary=True)
 
 
+@app.before_request
+def reset_db_transaction():
+    """Clear any leftover transaction from the shared connection."""
+    try:
+        db.rollback()
+    except Exception:
+        pass
+
+
 def role_required(allowed_roles):
     def decorator(f):
         @wraps(f)
@@ -247,7 +256,6 @@ def add_product():
         weaver_name = request.form['weaver']
 
     try:
-        db.start_transaction()
         cursor.execute(
             """
             INSERT INTO products
@@ -267,7 +275,31 @@ def add_product():
         flash('Product added successfully!', 'success')
     except Exception as e:
         db.rollback()
-        flash(f'Error adding product: {e}', 'danger')
+        # Fallback if weaver_id column not added yet
+        if 'weaver_id' in str(e).lower() or 'unknown column' in str(e).lower():
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO products
+                    (product_name, category, weaver_name, price, stock, description)
+                    VALUES (%s,%s,%s,%s,%s,%s)
+                    """,
+                    (name, category, weaver_name, price, stock, description),
+                )
+                product_id = cursor.lastrowid
+                product_code = f"P-{1000 + product_id}"
+                cursor.execute(
+                    "UPDATE products SET product_code=%s WHERE product_id=%s",
+                    (product_code, product_id),
+                )
+                db.commit()
+                flash('Product added successfully!', 'success')
+                return redirect('/products')
+            except Exception as e2:
+                db.rollback()
+                flash(f'Error adding product: {e2}', 'danger')
+        else:
+            flash(f'Error adding product: {e}', 'danger')
     return redirect('/products')
 
 
@@ -398,8 +430,7 @@ def place_order():
         return redirect('/products')
 
     try:
-        db.start_transaction()
-        cursor.execute("SELECT * FROM products WHERE product_id=%s FOR UPDATE", (product_id,))
+        cursor.execute("SELECT * FROM products WHERE product_id=%s", (product_id,))
         product = cursor.fetchone()
 
         if not product or product['stock'] < quantity:
@@ -439,8 +470,7 @@ def place_order():
 @role_required(['Buyer', 'Admin'])
 def cancel_order(order_id):
     try:
-        db.start_transaction()
-        cursor.execute("SELECT * FROM orders WHERE order_id=%s FOR UPDATE", (order_id,))
+        cursor.execute("SELECT * FROM orders WHERE order_id=%s", (order_id,))
         order = cursor.fetchone()
 
         if not order:
@@ -464,7 +494,7 @@ def cancel_order(order_id):
             return redirect('/orders')
 
         cursor.execute(
-            "SELECT stock FROM products WHERE product_id=%s FOR UPDATE",
+            "SELECT stock FROM products WHERE product_id=%s",
             (order['product_id'],),
         )
         product = cursor.fetchone()
@@ -494,8 +524,7 @@ def update_order_status():
     old_status = None
 
     try:
-        db.start_transaction()
-        cursor.execute("SELECT * FROM orders WHERE order_id=%s FOR UPDATE", (order_id,))
+        cursor.execute("SELECT * FROM orders WHERE order_id=%s", (order_id,))
         order = cursor.fetchone()
         if not order:
             db.rollback()
@@ -505,7 +534,7 @@ def update_order_status():
 
         if status == 'Cancelled' and old_status != 'Cancelled':
             cursor.execute(
-                "SELECT stock FROM products WHERE product_id=%s FOR UPDATE",
+                "SELECT stock FROM products WHERE product_id=%s",
                 (order['product_id'],),
             )
             product = cursor.fetchone()
@@ -668,14 +697,18 @@ def material_requests():
     try:
         cursor.execute(
             """
-            SELECT mr.*, m.material_name, m.material_type, u.full_name AS supplier_name
+            SELECT mr.*, m.material_name, m.material_type, u.full_name AS supplier_name,
+                   sr.rating AS user_rating, sr.comment AS user_comment
             FROM material_requests mr
             JOIN materials m ON mr.material_id = m.material_id
             JOIN users u ON mr.supplier_id = u.user_id
+            LEFT JOIN supplier_ratings sr
+                ON sr.material_request_id = mr.request_id
+                AND sr.rated_by = %s
             WHERE mr.weaver_id = %s
             ORDER BY mr.request_id DESC
             """,
-            (session['user_id'],),
+            (session['user_id'], session['user_id']),
         )
         my_requests = cursor.fetchall()
     except Exception:
@@ -753,9 +786,8 @@ def update_material_status(request_id, status):
         return jsonify({"success": False, "message": "Unauthorized"})
 
     try:
-        db.start_transaction()
         cursor.execute(
-            "SELECT * FROM material_requests WHERE request_id=%s FOR UPDATE",
+            "SELECT * FROM material_requests WHERE request_id=%s",
             (request_id,),
         )
         request_data = cursor.fetchone()
@@ -772,7 +804,7 @@ def update_material_status(request_id, status):
             material_id = request_data['material_id']
             quantity = request_data['quantity']
             cursor.execute(
-                "SELECT * FROM materials WHERE material_id=%s FOR UPDATE",
+                "SELECT * FROM materials WHERE material_id=%s",
                 (material_id,),
             )
             material = cursor.fetchone()
@@ -808,6 +840,18 @@ def rate_supplier():
     if rating < 1 or rating > 5:
         flash('Rating must be between 1 and 5.', 'danger')
         return redirect(request.referrer or '/material_requests')
+
+    if request_id:
+        cursor.execute(
+            """
+            SELECT rating_id FROM supplier_ratings
+            WHERE material_request_id = %s AND rated_by = %s
+            """,
+            (request_id, session['user_id']),
+        )
+        if cursor.fetchone():
+            flash('You have already rated this delivery.', 'info')
+            return redirect(request.referrer or '/material_requests')
 
     try:
         cursor.execute(

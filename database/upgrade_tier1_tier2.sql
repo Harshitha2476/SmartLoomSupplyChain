@@ -60,10 +60,14 @@ CREATE TABLE IF NOT EXISTS supplier_ratings (
   CONSTRAINT fk_rating_user
     FOREIGN KEY (rated_by) REFERENCES users(user_id) ON DELETE CASCADE,
   CONSTRAINT fk_rating_request
-    FOREIGN KEY (material_request_id) REFERENCES material_requests(request_id) ON DELETE SET NULL
+    FOREIGN KEY (material_request_id) REFERENCES material_requests(request_id) ON DELETE SET NULL,
+  UNIQUE KEY uq_rating_per_user_request (rated_by, material_request_id)
 );
 
--- Optional: strengthen existing FKs (skip if already defined or errors on duplicate)
+-- If supplier_ratings already exists without unique key, run once:
+-- ALTER TABLE supplier_ratings ADD UNIQUE KEY uq_rating_per_user_request (rated_by, material_request_id);
+
+-- Optional: strengthen existing FKs
 -- ALTER TABLE orders ADD CONSTRAINT fk_orders_user FOREIGN KEY (user_id) REFERENCES users(user_id);
 -- ALTER TABLE orders ADD CONSTRAINT fk_orders_product FOREIGN KEY (product_id) REFERENCES products(product_id);
 -- ALTER TABLE materials ADD CONSTRAINT fk_materials_supplier FOREIGN KEY (supplier_id) REFERENCES users(user_id);

@@ -45,6 +45,10 @@
                     <td><span class="badge bg-secondary">{{ r.request_status }}</span></td>
                     <td>
                         {% if r.request_status == 'Delivered' %}
+                        {% if r.user_rating %}
+                        <span class="badge bg-success">{{ r.user_rating }}★ Rated</span>
+                        {% if r.user_comment %}<small class="text-muted d-block">{{ r.user_comment }}</small>{% endif %}
+                        {% else %}
                         <form method="POST" action="/rate_supplier" class="d-flex gap-1">
                             <input type="hidden" name="supplier_id" value="{{ r.supplier_id }}">
                             <input type="hidden" name="material_request_id" value="{{ r.request_id }}">
@@ -54,6 +58,7 @@
                             <input name="comment" class="form-control form-control-sm" placeholder="Comment" />
                             <button class="btn btn-sm btn-primary">Rate</button>
                         </form>
+                        {% endif %}
                         {% else %}—{% endif %}
                     </td>
                 </tr>
