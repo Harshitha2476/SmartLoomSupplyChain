@@ -66,8 +66,29 @@
                     {% endif %}
                 </ul>
                 <div class="d-flex gap-2">
-                    <a href="/login" class="btn btn-outline-sl">Login</a>
-                    <a href="/login" class="btn btn-accent-sl">Get Started</a>
+
+                    {% if session.get('user_id') %}
+
+                    <span class="navbar-text">
+                        Welcome, {{ session['user_name'] }}
+                    </span>
+
+                    <a href="/logout" class="btn btn-outline-sl">
+                        Logout
+                    </a>
+
+                    {% else %}
+
+                    <a href="/login" class="btn btn-outline-sl">
+                        Login
+                    </a>
+
+                    <a href="/login" class="btn btn-accent-sl">
+                        Get Started
+                    </a>
+
+                    {% endif %}
+
                 </div>
             </div>
         </div>
