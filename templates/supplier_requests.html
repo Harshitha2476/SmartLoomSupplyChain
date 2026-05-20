@@ -118,7 +118,7 @@
 
                 {% for request in requests %}
 
-                <tr>
+                <tr id="row-{{ request.request_id }}">
 
                     <td>{{ request.request_id }}</td>
 
@@ -130,26 +130,30 @@
 
                     <td>
 
-                        <a href="/update_material_status/{{ request.request_id }}/Approved"
-                            class="btn btn-warning btn-sm">
+
+
+                        <button type="button" class="btn btn-warning btn-sm action-btn"
+                            data-id="{{ request.request_id }}" data-action="Approved">
 
                             Approve
 
-                        </a>
+                        </button>
 
-                        <a href="/update_material_status/{{ request.request_id }}/Delivered"
-                            class="btn btn-success btn-sm">
+                        <button type="button" class="btn btn-success btn-sm action-btn"
+                            data-id="{{ request.request_id }}" data-action="Delivered">
 
                             Delivered
 
-                        </a>
+                        </button>
 
-                        <a href="/update_material_status/{{ request.request_id }}/Rejected"
-                            class="btn btn-danger btn-sm">
+                        <button type="button" class="btn btn-danger btn-sm action-btn"
+                            data-id="{{ request.request_id }}" data-action="Rejected">
 
                             Reject
 
-                        </a>
+                        </button>
+
+
 
                     </td>
 
@@ -162,7 +166,60 @@
         </table>
 
     </div>
+    <script>
 
+        window.onload = function () {
+
+            const buttons = document.querySelectorAll('.action-btn');
+
+            buttons.forEach(function (button) {
+
+                button.addEventListener('click', function (event) {
+
+                    event.preventDefault();
+
+                    event.stopPropagation();
+
+                    const requestId = this.dataset.id;
+                    const action = this.dataset.action;
+
+                    fetch(`/update_material_status/${requestId}/${action}`, {
+                        method: 'POST'
+                    })
+
+                        .then(response => response.json())
+
+                        .then(data => {
+
+                            alert(data.message);
+
+                            if (data.success) {
+
+                                const row = document.getElementById(`row-${requestId}`);
+
+                                if (row) {
+                                    row.remove();
+                                }
+
+                            }
+
+                        })
+
+                        .catch(error => {
+
+                            console.log(error);
+
+                            alert("Fetch error");
+
+                        });
+
+                });
+
+            });
+
+        };
+
+    </script>
 </body>
 
 </html>

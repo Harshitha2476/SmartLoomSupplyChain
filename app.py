@@ -1,7 +1,8 @@
 from flask import Flask, flash, render_template, redirect, url_for, request, session, flash
 import mysql.connector
 from functools import wraps
-
+from flask import jsonify
+from streamlit import status
 app = Flask(__name__)
 
 def role_required(allowed_roles): #step 6
@@ -706,42 +707,52 @@ def supplier_requests():
         requests=requests
     )
 
-@app.route('/update_material_status/<int:id>/<status>')
-def update_material_status(id, status):
-
+@app.route('/update_material_status/<int:request_id>/<status>', methods=['GET', 'POST'])
+def update_material_status(request_id, status):
+    print("REQUEST METHOD:", request.method)
     if session['role'] not in ['Supplier', 'Admin']:
-        return redirect('/dashboard')
+        return jsonify({
+            "success": False,
+            "message": "Unauthorized"
+        })
 
-    # GET REQUEST
-
+    # GET REQUEST DATA
     query = """
     SELECT * FROM material_requests
     WHERE request_id=%s
     """
 
-    cursor.execute(query, (id,))
-
+    cursor.execute(query, (request_id,))
     request_data = cursor.fetchone()
 
-    # UPDATE STATUS
+    if not request_data:
+        return jsonify({
+            "success": False,
+            "message": "Request not found"
+        })
 
+    # PREVENT DOUBLE DELIVERY
+    if request_data['request_status'] == 'Delivered':
+        return jsonify({
+            "success": False,
+            "message": "Already delivered"
+        })
+
+    # UPDATE STATUS
     update_query = """
     UPDATE material_requests
     SET request_status=%s
     WHERE request_id=%s
     """
 
-    cursor.execute(
-        update_query,
-        (status, id)
-    )
+    cursor.execute(update_query, (status, request_id))
 
-    # REDUCE STOCK IF DELIVERED
-
+    # REDUCE STOCK ONLY WHEN DELIVERED
+    # REDUCE STOCK ONLY WHEN DELIVERED
+    
     if status == 'Delivered':
 
         material_id = request_data['material_id']
-
         quantity = request_data['quantity']
 
         material_query = """
@@ -749,16 +760,19 @@ def update_material_status(id, status):
         WHERE material_id=%s
         """
 
-        cursor.execute(
-            material_query,
-            (material_id,)
-        )
-
+        cursor.execute(material_query, (material_id,))
         material = cursor.fetchone()
 
-        new_stock = (
-            material['stock'] - quantity
-        )
+        # CHECK STOCK
+        if material['stock'] < quantity:
+
+            return jsonify({
+                "success": False,
+                "message": "Not enough stock available"
+            })
+
+        # REDUCE STOCK
+        new_stock = material['stock'] - quantity
 
         stock_query = """
         UPDATE materials
@@ -766,14 +780,15 @@ def update_material_status(id, status):
         WHERE material_id=%s
         """
 
-        cursor.execute(
-            stock_query,
-            (new_stock, material_id)
-        )
+        cursor.execute(stock_query, (new_stock, material_id))
 
     db.commit()
-    flash('Material status updated successfully!', 'success')
-    return redirect('/supplier_requests')
+
+    return jsonify({
+        "success": True,
+        "message": f"Request {status} successfully"
+    })
+
 
 @app.route('/admin')
 def admin():
