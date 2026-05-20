@@ -78,6 +78,16 @@ def paginate(cursor, count_sql, data_sql, params, page, per_page=PER_PAGE):
     return rows, page, total_pages, total_count
 
 
+def db_error_message(exc):
+    """User-friendly message from MySQL trigger/constraint errors."""
+    if hasattr(exc, "msg") and exc.msg:
+        return exc.msg
+    text = str(exc)
+    if "MESSAGE_TEXT" in text:
+        return text.split("'")[1] if "'" in text else text
+    return text
+
+
 def pagination_context(page, total_pages, total_count, base_url, extra_args=None):
     extra_args = extra_args or {}
     q = "&".join(f"{k}={v}" for k, v in extra_args.items() if v)

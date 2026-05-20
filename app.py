@@ -8,7 +8,7 @@ from functools import wraps
 from helpers import (
     PER_PAGE, hash_password, verify_password, needs_rehash,
     log_activity, add_notification, notify_low_stock,
-    paginate, pagination_context,
+    paginate, pagination_context, db_error_message,
 )
 
 app = Flask(__name__)
@@ -256,6 +256,7 @@ def add_product():
         weaver_name = request.form['weaver']
 
     try:
+        # product_code is set by trg_products_after_insert
         cursor.execute(
             """
             INSERT INTO products
@@ -265,17 +266,11 @@ def add_product():
             (name, category, weaver_name, weaver_id, price, stock, description),
         )
         product_id = cursor.lastrowid
-        product_code = f"P-{1000 + product_id}"
-        cursor.execute(
-            "UPDATE products SET product_code=%s WHERE product_id=%s",
-            (product_code, product_id),
-        )
         db.commit()
         log_activity(cursor, db, session['user_id'], 'ADD_PRODUCT', 'products', product_id)
         flash('Product added successfully!', 'success')
     except Exception as e:
         db.rollback()
-        # Fallback if weaver_id column not added yet
         if 'weaver_id' in str(e).lower() or 'unknown column' in str(e).lower():
             try:
                 cursor.execute(
@@ -287,19 +282,14 @@ def add_product():
                     (name, category, weaver_name, price, stock, description),
                 )
                 product_id = cursor.lastrowid
-                product_code = f"P-{1000 + product_id}"
-                cursor.execute(
-                    "UPDATE products SET product_code=%s WHERE product_id=%s",
-                    (product_code, product_id),
-                )
                 db.commit()
                 flash('Product added successfully!', 'success')
                 return redirect('/products')
             except Exception as e2:
                 db.rollback()
-                flash(f'Error adding product: {e2}', 'danger')
+                flash(f'Error adding product: {db_error_message(e2)}', 'danger')
         else:
-            flash(f'Error adding product: {e}', 'danger')
+            flash(f'Error adding product: {db_error_message(e)}', 'danger')
     return redirect('/products')
 
 
@@ -430,39 +420,27 @@ def place_order():
         return redirect('/products')
 
     try:
-        cursor.execute("SELECT * FROM products WHERE product_id=%s", (product_id,))
-        product = cursor.fetchone()
-
-        if not product or product['stock'] < quantity:
-            db.rollback()
-            flash('Not enough stock available.', 'danger')
-            return redirect('/products')
-
-        total_price = product['price'] * quantity
-        new_stock = product['stock'] - quantity
-
-        cursor.execute(
-            "UPDATE products SET stock=%s WHERE product_id=%s",
-            (new_stock, product_id),
-        )
+        # Stock check, price, and stock reduction handled by DB triggers
         cursor.execute(
             """
             INSERT INTO orders (user_id, product_id, quantity, total_price)
-            VALUES (%s,%s,%s,%s)
+            VALUES (%s,%s,%s,0)
             """,
-            (user_id, product_id, quantity, total_price),
+            (user_id, product_id, quantity),
         )
         order_id = cursor.lastrowid
         db.commit()
 
-        product['stock'] = new_stock
-        notify_low_stock(cursor, db, product)
+        cursor.execute("SELECT * FROM products WHERE product_id=%s", (product_id,))
+        product = cursor.fetchone()
+        if product:
+            notify_low_stock(cursor, db, product)
         log_activity(cursor, db, user_id, 'PLACE_ORDER', 'orders', order_id,
                      f"qty={quantity}")
         flash('Order placed successfully!', 'success')
     except Exception as e:
         db.rollback()
-        flash(f'Order failed: {e}', 'danger')
+        flash(f'Order failed: {db_error_message(e)}', 'danger')
     return redirect('/orders')
 
 
@@ -493,16 +471,7 @@ def cancel_order(order_id):
             flash('Only pending orders can be cancelled.', 'warning')
             return redirect('/orders')
 
-        cursor.execute(
-            "SELECT stock FROM products WHERE product_id=%s",
-            (order['product_id'],),
-        )
-        product = cursor.fetchone()
-        new_stock = product['stock'] + order['quantity']
-        cursor.execute(
-            "UPDATE products SET stock=%s WHERE product_id=%s",
-            (new_stock, order['product_id']),
-        )
+        # Stock restore handled by trg_orders_after_update
         cursor.execute(
             "UPDATE orders SET order_status='Cancelled' WHERE order_id=%s",
             (order_id,),
@@ -512,7 +481,7 @@ def cancel_order(order_id):
         flash('Order cancelled and stock restored.', 'success')
     except Exception as e:
         db.rollback()
-        flash(f'Cancel failed: {e}', 'danger')
+        flash(f'Cancel failed: {db_error_message(e)}', 'danger')
     return redirect('/orders')
 
 
@@ -532,17 +501,7 @@ def update_order_status():
 
         old_status = order['order_status']
 
-        if status == 'Cancelled' and old_status != 'Cancelled':
-            cursor.execute(
-                "SELECT stock FROM products WHERE product_id=%s",
-                (order['product_id'],),
-            )
-            product = cursor.fetchone()
-            cursor.execute(
-                "UPDATE products SET stock=%s WHERE product_id=%s",
-                (product['stock'] + order['quantity'], order['product_id']),
-            )
-
+        # Stock restore on cancel handled by trg_orders_after_update
         cursor.execute(
             "UPDATE orders SET order_status=%s WHERE order_id=%s",
             (status, order_id),
@@ -552,7 +511,7 @@ def update_order_status():
                      order_id, f"{old_status}->{status}")
     except Exception as e:
         db.rollback()
-        flash(f'Update failed: {e}', 'danger')
+        flash(f'Update failed: {db_error_message(e)}', 'danger')
     return redirect('/orders')
 
 
@@ -873,22 +832,7 @@ def update_material_status(request_id, status):
             db.rollback()
             return jsonify({"success": False, "message": "Invalid status"})
 
-        if status == 'Delivered':
-            material_id = request_data['material_id']
-            quantity = request_data['quantity']
-            cursor.execute(
-                "SELECT * FROM materials WHERE material_id=%s",
-                (material_id,),
-            )
-            material = cursor.fetchone()
-            if material['stock'] < quantity:
-                db.rollback()
-                return jsonify({"success": False, "message": "Not enough stock available"})
-            cursor.execute(
-                "UPDATE materials SET stock=%s WHERE material_id=%s",
-                (material['stock'] - quantity, material_id),
-            )
-
+        # Delivery stock check/reduction handled by material_requests triggers
         cursor.execute(
             "UPDATE material_requests SET request_status=%s WHERE request_id=%s",
             (status, request_id),
@@ -904,7 +848,7 @@ def update_material_status(request_id, status):
         })
     except Exception as e:
         db.rollback()
-        return jsonify({"success": False, "message": str(e)})
+        return jsonify({"success": False, "message": db_error_message(e)})
 
 
 @app.route('/rate_supplier', methods=['POST'])
