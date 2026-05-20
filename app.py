@@ -693,6 +693,10 @@ def material_requests():
     )
     materials = cursor.fetchall()
 
+    weaver_id = session['user_id']
+    if session['role'] == 'Admin':
+        weaver_id = request.args.get('weaver_id', type=int) or session['user_id']
+
     my_requests = []
     try:
         cursor.execute(
@@ -708,11 +712,25 @@ def material_requests():
             WHERE mr.weaver_id = %s
             ORDER BY mr.request_id DESC
             """,
-            (session['user_id'], session['user_id']),
+            (session['user_id'], weaver_id),
         )
         my_requests = cursor.fetchall()
     except Exception:
-        pass
+        try:
+            cursor.execute(
+                """
+                SELECT mr.*, m.material_name, m.material_type, u.full_name AS supplier_name
+                FROM material_requests mr
+                JOIN materials m ON mr.material_id = m.material_id
+                JOIN users u ON mr.supplier_id = u.user_id
+                WHERE mr.weaver_id = %s
+                ORDER BY mr.request_id DESC
+                """,
+                (weaver_id,),
+            )
+            my_requests = cursor.fetchall()
+        except Exception:
+            my_requests = []
 
     return render_template(
         'material_requests.html',
@@ -723,24 +741,35 @@ def material_requests():
 
 
 @app.route('/request_material', methods=['POST'])
-@role_required(['Weaver'])
+@role_required(['Weaver', 'Admin'])
 def request_material():
-    cursor.execute(
-        """
-        INSERT INTO material_requests (weaver_id, supplier_id, material_id, quantity)
-        VALUES (%s,%s,%s,%s)
-        """,
-        (
-            session['user_id'],
-            request.form['supplier_id'],
-            request.form['material_id'],
-            request.form['quantity'],
-        ),
-    )
-    db.commit()
-    log_activity(cursor, db, session['user_id'], 'REQUEST_MATERIAL',
-                 'material_requests', cursor.lastrowid)
-    flash('Material request submitted successfully!', 'success')
+    if session['role'] != 'Weaver':
+        flash('Only weavers can submit material requests.', 'warning')
+        return redirect('/material_requests')
+
+    try:
+        quantity = int(request.form['quantity'])
+        if quantity < 1:
+            raise ValueError('invalid quantity')
+        cursor.execute(
+            """
+            INSERT INTO material_requests (weaver_id, supplier_id, material_id, quantity)
+            VALUES (%s,%s,%s,%s)
+            """,
+            (
+                session['user_id'],
+                request.form['supplier_id'],
+                request.form['material_id'],
+                quantity,
+            ),
+        )
+        db.commit()
+        log_activity(cursor, db, session['user_id'], 'REQUEST_MATERIAL',
+                     'material_requests', cursor.lastrowid)
+        flash('Material request submitted successfully!', 'success')
+    except Exception as e:
+        db.rollback()
+        flash(f'Could not submit request: {e}', 'danger')
     return redirect('/material_requests')
 
 
@@ -760,6 +789,31 @@ def supplier_requests():
     )
     requests_list = cursor.fetchall()
 
+    def bucket(status):
+        s = status or 'Pending'
+        if s == 'Approved':
+            return 'approved'
+        if s == 'Delivered':
+            return 'delivered'
+        if s == 'Rejected':
+            return 'rejected'
+        return 'pending'
+
+    pending_requests = []
+    approved_requests = []
+    delivered_requests = []
+    rejected_requests = []
+    for req in requests_list:
+        b = bucket(req.get('request_status'))
+        if b == 'approved':
+            approved_requests.append(req)
+        elif b == 'delivered':
+            delivered_requests.append(req)
+        elif b == 'rejected':
+            rejected_requests.append(req)
+        else:
+            pending_requests.append(req)
+
     cursor.execute(
         """
         SELECT supplier_id, AVG(rating) AS avg_rating, COUNT(*) AS rating_count
@@ -773,7 +827,10 @@ def supplier_requests():
 
     return render_template(
         'supplier_requests.html',
-        requests=requests_list,
+        pending_requests=pending_requests,
+        approved_requests=approved_requests,
+        delivered_requests=delivered_requests,
+        rejected_requests=rejected_requests,
         rating_summary=rating_summary,
         **nav_context(),
     )
@@ -796,9 +853,25 @@ def update_material_status(request_id, status):
             db.rollback()
             return jsonify({"success": False, "message": "Request not found"})
 
-        if request_data['request_status'] == 'Delivered':
+        current = request_data['request_status'] or 'Pending'
+
+        if current in ('Delivered', 'Rejected'):
             db.rollback()
-            return jsonify({"success": False, "message": "Already delivered"})
+            return jsonify({
+                "success": False,
+                "message": f"Request is already {current}",
+            })
+
+        if current == 'Approved' and status != 'Delivered':
+            db.rollback()
+            return jsonify({
+                "success": False,
+                "message": "Approved requests can only be marked as Delivered",
+            })
+
+        if current == 'Pending' and status not in ('Approved', 'Delivered', 'Rejected'):
+            db.rollback()
+            return jsonify({"success": False, "message": "Invalid status"})
 
         if status == 'Delivered':
             material_id = request_data['material_id']
@@ -823,7 +896,12 @@ def update_material_status(request_id, status):
         db.commit()
         log_activity(cursor, db, session['user_id'], 'MATERIAL_STATUS',
                      'material_requests', request_id, status)
-        return jsonify({"success": True, "message": f"Request {status} successfully"})
+        return jsonify({
+            "success": True,
+            "message": f"Request {status} successfully",
+            "status": status,
+            "request_id": request_id,
+        })
     except Exception as e:
         db.rollback()
         return jsonify({"success": False, "message": str(e)})

@@ -1,225 +1,214 @@
 <!DOCTYPE html>
-<html>
-
+<html lang="en">
 <head>
-
-    <title>Supplier Requests</title>
-
-    <!-- <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"> -->
+    <title>Supplier Requests — Smart Loom</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet" />
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
-
+    <style>
+        .sl-section-pending .sl-section-head { border-left: 4px solid #ffc107; }
+        .sl-section-approved .sl-section-head { border-left: 4px solid #0d6efd; }
+        .sl-section-delivered .sl-section-head { border-left: 4px solid #198754; }
+        .sl-section-rejected .sl-section-head { border-left: 4px solid #dc3545; }
+        .sl-section-head { padding-left: 12px; margin-bottom: 1rem; }
+        .empty-section { color: var(--muted, #6c757d); font-size: 0.9rem; padding: 0.5rem 0; }
+    </style>
 </head>
-
 <body>
     <nav class="sl-navbar navbar navbar-expand-lg">
         <div class="container">
-            <a class="navbar-brand" href="/"><span class="sl-logo">SL</span><span>Smart Loom<span
-                        class="sl-brand-sub">Supply
-                        Chain</span></span></a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#nav"><span
-                    class="navbar-toggler-icon"></span></button>
-            <div class="collapse navbar-collapse" id="nav">
-                <ul class="navbar-nav mx-auto">
-                    <li class="nav-item"><a class="nav-link sl-nav-link" href="/">Home</a></li>
-                    <li class="nav-item"><a class="nav-link sl-nav-link" href="/dashboard">Dashboard</a></li>
-                    <li class="nav-item"><a class="nav-link sl-nav-link" href="/orders">Orders</a></li>
-
-                    {% if session['role'] == 'Supplier' %}
-
-                    <li class="nav-item">
-                        <a class="nav-link sl-nav-link" href="/materials">
-                            Materials
-                        </a>
-                    </li>
-
-                    <li class="nav-item">
-                        <a class="nav-link sl-nav-link" href="/supplier_requests">
-                            Requests
-                        </a>
-                    </li>
-
-                    {% endif %}
-
-                    {% if session['role'] == 'Weaver' %}
-
-                    <li class="nav-item">
-                        <a class="nav-link sl-nav-link" href="/material_requests">
-                            Material Requests
-                        </a>
-                    </li>
-
-                    {% endif %}
-
-                    {% if session['role'] == 'Admin' %}
-
-                    <li class="nav-item">
-
-                        <a class="nav-link sl-nav-link" href="/admin">
-
-                            Admin Panel
-
-                        </a>
-
-                    </li>
-
-                    {% endif %}
-                </ul>
-                <div class="d-flex gap-2">
-
-                    {% if session.get('user_id') %}
-
-                    <span class="navbar-text">
-                        Welcome, {{ session['user_name'] }}
-                    </span>
-
-                    <a href="/logout" class="btn btn-outline-sl">
-                        Logout
-                    </a>
-
-                    {% else %}
-
-                    <a href="/login" class="btn btn-outline-sl">
-                        Login
-                    </a>
-
-                    <a href="/login" class="btn btn-accent-sl">
-                        Get Started
-                    </a>
-
-                    {% endif %}
-
-                </div>
+            <a class="navbar-brand" href="/"><span class="sl-logo">SL</span><span>Smart Loom</span></a>
+            <div class="d-flex gap-2 align-items-center">
+                {% if rating_summary and rating_summary.avg_rating %}
+                <span class="navbar-text small">Your rating: {{ "%.1f"|format(rating_summary.avg_rating) }}★</span>
+                {% endif %}
+                <a href="/logout" class="btn btn-outline-sl btn-sm">Logout</a>
             </div>
         </div>
     </nav>
+
     <div class="container py-5">
+        <h2 class="mb-4">Material Requests</h2>
+        <p class="text-muted-sl mb-4">New requests start in <strong>Pending</strong>. After you act, they move to the matching section below.</p>
 
-        <h2 class="mb-4">
-            Material Requests
-        </h2>
+        {% macro request_row(r, section) %}
+        <tr id="row-{{ r.request_id }}" data-request-id="{{ r.request_id }}" data-section="{{ section }}">
+            <td>#{{ r.request_id }}</td>
+            <td>{{ r.material_name }}</td>
+            <td>{{ r.quantity }}</td>
+            <td class="status-cell">
+                {% if section == 'pending' %}
+                <span class="badge bg-warning text-dark">Pending</span>
+                {% elif section == 'approved' %}
+                <span class="badge bg-primary">Approved</span>
+                {% elif section == 'delivered' %}
+                <span class="badge bg-success">Delivered</span>
+                {% else %}
+                <span class="badge bg-danger">Rejected</span>
+                {% endif %}
+            </td>
+            <td class="actions-cell text-nowrap">
+                {% if section == 'pending' %}
+                <button type="button" class="btn btn-warning btn-sm action-btn" data-id="{{ r.request_id }}" data-action="Approved">Approve</button>
+                <button type="button" class="btn btn-success btn-sm action-btn" data-id="{{ r.request_id }}" data-action="Delivered">Deliver</button>
+                <button type="button" class="btn btn-danger btn-sm action-btn" data-id="{{ r.request_id }}" data-action="Rejected">Reject</button>
+                {% elif section == 'approved' %}
+                <button type="button" class="btn btn-success btn-sm action-btn" data-id="{{ r.request_id }}" data-action="Delivered">Mark Delivered</button>
+                {% else %}
+                <span class="text-muted">—</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endmacro %}
 
-        <table class="table table-bordered">
+        <!-- PENDING -->
+        <div class="sl-card p-4 mb-4 sl-section-pending" id="section-pending">
+            <h4 class="sl-section-head">Pending <span class="badge bg-warning text-dark section-count">{{ pending_requests|length }}</span></h4>
+            <div class="table-responsive">
+                <table class="table table-bordered mb-0">
+                    <thead>
+                        <tr><th>ID</th><th>Material</th><th>Qty</th><th>Status</th><th>Action</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for r in pending_requests %}
+                        {{ request_row(r, 'pending') }}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <p class="empty-section mb-0 mt-2 {% if pending_requests %}d-none{% endif %}" data-empty="pending">No pending requests.</p>
+        </div>
 
-            <thead>
+        <!-- APPROVED -->
+        <div class="sl-card p-4 mb-4 sl-section-approved" id="section-approved">
+            <h4 class="sl-section-head">Approved <span class="badge bg-primary section-count">{{ approved_requests|length }}</span></h4>
+            <div class="table-responsive">
+                <table class="table table-bordered mb-0">
+                    <thead>
+                        <tr><th>ID</th><th>Material</th><th>Qty</th><th>Status</th><th>Action</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for r in approved_requests %}
+                        {{ request_row(r, 'approved') }}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <p class="empty-section mb-0 mt-2 {% if approved_requests %}d-none{% endif %}" data-empty="approved">No approved requests yet.</p>
+        </div>
 
-                <tr>
-                    <th>ID</th>
-                    <th>Material</th>
-                    <th>Quantity</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                </tr>
+        <!-- DELIVERED -->
+        <div class="sl-card p-4 mb-4 sl-section-delivered" id="section-delivered">
+            <h4 class="sl-section-head">Delivered <span class="badge bg-success section-count">{{ delivered_requests|length }}</span></h4>
+            <div class="table-responsive">
+                <table class="table table-bordered mb-0">
+                    <thead>
+                        <tr><th>ID</th><th>Material</th><th>Qty</th><th>Status</th><th>Action</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for r in delivered_requests %}
+                        {{ request_row(r, 'delivered') }}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <p class="empty-section mb-0 mt-2 {% if delivered_requests %}d-none{% endif %}" data-empty="delivered">No delivered requests yet.</p>
+        </div>
 
-            </thead>
-
-            <tbody>
-
-                {% for request in requests %}
-
-                <tr id="row-{{ request.request_id }}">
-
-                    <td>{{ request.request_id }}</td>
-
-                    <td>{{ request.material_name }}</td>
-
-                    <td>{{ request.quantity }}</td>
-
-                    <td>{{ request.request_status }}</td>
-
-                    <td>
-
-
-
-                        <button type="button" class="btn btn-warning btn-sm action-btn"
-                            data-id="{{ request.request_id }}" data-action="Approved">
-
-                            Approve
-
-                        </button>
-
-                        <button type="button" class="btn btn-success btn-sm action-btn"
-                            data-id="{{ request.request_id }}" data-action="Delivered">
-
-                            Delivered
-
-                        </button>
-
-                        <button type="button" class="btn btn-danger btn-sm action-btn"
-                            data-id="{{ request.request_id }}" data-action="Rejected">
-
-                            Reject
-
-                        </button>
-
-
-
-                    </td>
-
-                </tr>
-
-                {% endfor %}
-
-            </tbody>
-
-        </table>
-
+        <!-- REJECTED -->
+        <div class="sl-card p-4 mb-4 sl-section-rejected" id="section-rejected">
+            <h4 class="sl-section-head">Rejected <span class="badge bg-danger section-count">{{ rejected_requests|length }}</span></h4>
+            <div class="table-responsive">
+                <table class="table table-bordered mb-0">
+                    <thead>
+                        <tr><th>ID</th><th>Material</th><th>Qty</th><th>Status</th><th>Action</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for r in rejected_requests %}
+                        {{ request_row(r, 'rejected') }}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <p class="empty-section mb-0 mt-2 {% if rejected_requests %}d-none{% endif %}" data-empty="rejected">No rejected requests yet.</p>
+        </div>
     </div>
+
     <script>
-
-        window.onload = function () {
-
-            const buttons = document.querySelectorAll('.action-btn');
-
-            buttons.forEach(function (button) {
-
-                button.addEventListener('click', function (event) {
-
-                    event.preventDefault();
-
-                    event.stopPropagation();
-
-                    const requestId = this.dataset.id;
-                    const action = this.dataset.action;
-
-                    fetch(`/update_material_status/${requestId}/${action}`, {
-                        method: 'POST'
-                    })
-
-                        .then(response => response.json())
-
-                        .then(data => {
-
-                            alert(data.message);
-
-                            if (data.success) {
-
-                                const row = document.getElementById(`row-${requestId}`);
-
-                                if (row) {
-                                    row.remove();
-                                }
-
-                            }
-
-                        })
-
-                        .catch(error => {
-
-                            console.log(error);
-
-                            alert("Fetch error");
-
-                        });
-
-                });
-
-            });
-
+        const SECTION_FOR_STATUS = {
+            Pending: 'pending',
+            Approved: 'approved',
+            Delivered: 'delivered',
+            Rejected: 'rejected'
         };
 
+        const STATUS_BADGES = {
+            pending: '<span class="badge bg-warning text-dark">Pending</span>',
+            approved: '<span class="badge bg-primary">Approved</span>',
+            delivered: '<span class="badge bg-success">Delivered</span>',
+            rejected: '<span class="badge bg-danger">Rejected</span>'
+        };
+
+        const ACTIONS_HTML = {
+            pending: `
+                <button type="button" class="btn btn-warning btn-sm action-btn" data-action="Approved">Approve</button>
+                <button type="button" class="btn btn-success btn-sm action-btn" data-action="Delivered">Deliver</button>
+                <button type="button" class="btn btn-danger btn-sm action-btn" data-action="Rejected">Reject</button>`,
+            approved: `
+                <button type="button" class="btn btn-success btn-sm action-btn" data-action="Delivered">Mark Delivered</button>`,
+            delivered: '<span class="text-muted">—</span>',
+            rejected: '<span class="text-muted">—</span>'
+        };
+
+        function updateSectionCounts() {
+            ['pending', 'approved', 'delivered', 'rejected'].forEach(function (key) {
+                const section = document.getElementById('section-' + key);
+                const count = section.querySelector('tbody').rows.length;
+                section.querySelector('.section-count').textContent = count;
+                const empty = section.querySelector('[data-empty="' + key + '"]');
+                if (empty) empty.classList.toggle('d-none', count > 0);
+            });
+        }
+
+        function moveRowToSection(row, status) {
+            const sectionKey = SECTION_FOR_STATUS[status];
+            const tbody = document.querySelector('#section-' + sectionKey + ' tbody');
+            row.dataset.section = sectionKey;
+            row.querySelector('.status-cell').innerHTML = STATUS_BADGES[sectionKey];
+            const actions = row.querySelector('.actions-cell');
+            actions.innerHTML = ACTIONS_HTML[sectionKey];
+            const requestId = row.dataset.requestId;
+            actions.querySelectorAll('.action-btn').forEach(function (btn) {
+                btn.dataset.id = requestId;
+                bindActionButton(btn);
+            });
+            tbody.appendChild(row);
+            updateSectionCounts();
+        }
+
+        function bindActionButton(button) {
+            button.addEventListener('click', function (event) {
+                event.preventDefault();
+                event.stopPropagation();
+                const requestId = this.dataset.id;
+                const action = this.dataset.action;
+                const row = document.getElementById('row-' + requestId);
+
+                fetch('/update_material_status/' + requestId + '/' + action, { method: 'POST' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        if (data.success) {
+                            moveRowToSection(row, data.status);
+                        } else {
+                            alert(data.message);
+                        }
+                    })
+                    .catch(function () { alert('Request failed'); });
+            });
+        }
+
+        document.querySelectorAll('.action-btn').forEach(bindActionButton);
+        updateSectionCounts();
     </script>
 </body>
-
 </html>
